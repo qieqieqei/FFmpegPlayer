@@ -1,660 +1,241 @@
+# FFmpeg_text_claw
 
-# FFmpeg_Test
+基于 **C++17 + FFmpeg 8.x + SDL2** 开发的 Windows 多线程音视频播放器（MSVC / Visual Studio 工程）。
 
-基于 **C++17 + FFmpeg + SDL2** 开发的跨平台多线程音视频播放器。
-
-项目目标是深入学习音视频播放器底层架构，实现从 **媒体读取、解封装、音视频解码、同步控制到音视频输出** 的完整播放流程。
-
-项目采用模块化设计，将播放器拆分为多个独立模块，通过线程安全队列连接，实现解码、渲染和控制逻辑解耦。
+项目目标是深入学习音视频播放器底层架构，实现从 **媒体读取、解封装、音视频解码、同步控制到音视频输出** 的完整播放流程。模块化设计：播放器拆分为多个独立模块，通过线程安全队列连接，实现解码、渲染和控制逻辑解耦。
 
 ---
 
-# 项目特点
+## 功能清单
 
-- 基于 FFmpeg 实现完整媒体处理流程
-- C++17 模块化播放器架构设计
-- 多线程音视频解码
-- SDL2 视频渲染与音频播放
-- PacketQueue / FrameQueue 数据缓冲
-- Audio Clock 音视频同步
-- 支持 Seek 跳转
-- 支持暂停、恢复、停止等播放控制
-- CMake 工程管理
-- Windows/Linux 跨平台设计
+### 播放核心
+- ✅ MP4 / 常见封装格式播放（FFmpeg 解封装）
+- ✅ H.264 / H.265 视频解码（libavcodec）
+- ✅ AAC 等音频解码 + 重采样（SwrContext，统一为 S16 / 48000Hz / 立体声）
+- ✅ 三线程架构：Demux 线程 / Video Decode 线程 / Audio Decode 线程（主线程负责渲染）
+- ✅ PacketQueue / FrameQueue 线程安全缓冲（带 max-size 背压）
+- ✅ 音频主时钟音视频同步（视频提前 ≤100ms 分片等待，落后 >50ms 丢帧；无音频时按帧率播放）
+- ✅ Seek 跳转（`av_seek_frame` + flush + 清队列 + 时钟重置，带中断保护防死锁）
+- ✅ 暂停 / 恢复（背压自停，不空转）
+- ✅ 变速播放（0.5x / 1x / 1.5x / 2x，音频重采样变速）
+- ✅ 音量控制（S16 采样缩放 + clamp）
 
+### 进阶功能
+- ✅ 播放列表：多文件播放、上一首 / 下一首、**EOF 自动播下一首**
+- ✅ 字幕：自动加载同名 .srt / .ass，OSD 底部渲染，可开关
+- ✅ OSD 屏幕显示：进度 / 时间 / 状态 / 提示，中文字体（Font/simhei.ttf）
+- ✅ 截图：PNG / JPG 一键保存（S / J 键）
+- ✅ 帧步进（暂停时逐帧查看，N 键）
+- ✅ 全屏切换（F 键）
+- ✅ 轻量日志系统：级别过滤（DEBUG/INFO/WARN/ERROR）、时间戳、`-v` 开 DEBUG、`--log-file` 写文件
 
 ---
 
-# 技术栈
+## 快捷键
 
-| 技术 | 用途 |
+| 按键 | 功能 |
 | ---- | ---- |
-| C++17 | 核心开发语言 |
-| FFmpeg | 媒体解析、解码、音频处理 |
-| SDL2 | 视频渲染、音频输出、事件处理 |
-| CMake | 工程构建 |
-| OpenGL | SDL2 底层纹理渲染基础 |
-| Git | 版本管理 |
-
-
----
-
-# 播放器架构
-
-整体采用分层模块化设计：
-
-             +----------------+
-             |   Player       |
-             |  Controller    |
-             +-------+--------+
-                     |
-                     |
-             +-------v--------+
-             |    Demux       |
-             |  (FFmpeg)      |
-             +-------+--------+
-                     |
-          +----------+----------+
-          |                     |
-          v                     v
-
-   +-------------+       +-------------+
-   | PacketQueue |       | PacketQueue |
-   |   Video     |       |   Audio     |
-   +------+------+       +------+------+
-          |                     |
-          v                     v
-
-   +-------------+       +-------------+
-   | Video       |       | Audio       |
-   | Decoder     |       | Decoder     |
-   +------+------+       +------+------+
-
-          |                     |
-          v                     v
-
-   +-------------+       +-------------+
-   | FrameQueue  |       | SwrContext  |
-   | Video Frame |       | Resample    |
-   +------+------+       +------+------+
-
-          |
-          v
-
-   +-------------+
-   | SDL Renderer|
-   | YUV Output  |
-   +-------------+
-
-                          |
-                          v
-
-                   +-------------+
-                   | SDL Audio   |
-                   | Callback    |
-                   +-------------+
+| `Space` | 暂停 / 恢复 |
+| `R` | 循环变速（0.5x → 1x → 1.5x → 2x） |
+| `←` / `→` | 后退 / 前进 5 秒 |
+| `[` / `]` | 上一首 / 下一首（播放列表） |
+| `T` | 字幕开关 |
+| `S` / `J` | 截图 PNG / JPG |
+| `N` | 帧步进（暂停时） |
+| `+` / `-` | 音量 +10 / -10 |
+| `F` | 全屏 |
+| `ESC` / `Q` | 退出 |
 
 ---
 
-# 核心模块
+## 命令行用法
 
-## 1. Demux 模块
+```bat
+FFmpeg_text_claw.exe [文件1] [文件2] ...        # 多文件加入播放列表
+FFmpeg_text_claw.exe -v file.mp4                # DEBUG 级别日志
+FFmpeg_text_claw.exe --log-file player.log file.mp4   # 同时写日志文件
+```
 
-负责媒体文件解析和数据读取。
-
-主要流程：
-
-
-Input File
-
-|
-v
-
-avformat_open_input()
-
-|
-v
-
-avformat_find_stream_info()
-
-|
-v
-
-av_read_frame()
-
-|
-v
-
-AVPacket
-
-
-负责：
-
-- 打开媒体文件
-- 查找音视频流
-- 读取 AVPacket
-- 分发音视频数据
-
+不带参数时播放默认测试视频 `D:\FFmpeg\ffmpeg\test_audio.mp4`（代码内 kDefaultVideo 常量，可自行修改）。
 
 ---
 
-# 2. Decoder 模块
+## 播放器架构
 
-基于 FFmpeg libavcodec 实现音视频解码。
+Player 作为控制中心，持有全部模块，三线程 + 主渲染循环：
 
-数据流程：
+```
+                +---------------------------+
+                |         Player            |  控制中心（状态机 + 线程管理）
+                +-------------+-------------+
+                              |
+        +---------------------+---------------------+
+        |                     |                     |
+        v                     v                     v
++---------------+     +---------------+     +---------------+
+|  Demux Thread |     | Video Decode  |     | Audio Decode  |
+|  (Demuxer)    |     | Thread        |     | Thread        |
+|  av_read_frame|     | (VideoDecoder)|     | (AudioDecoder)|
++-------+-------+     +-------+-------+     +-------+-------+
+        |                     |                     |
+        v                     v                     v
++---------------+     +---------------+     +---------------+
+| PacketQueue   |     | PacketQueue   |     | AudioResampler|
+|  Video(120)   |     |  Audio(60)    |     |  → SwrContext |
++---------------+     +---------------+     +-------+-------+
+                                              | PCMQueue
+                                              v
+                                     +---------------+
+                                     |  AudioDevice  |  SDL Audio 回调
+                                     | AudioClock    |  （音频主时钟）
+                                     | VolumeControl |
+                                     +---------------+
 
++---------------+     +---------------+
+| FrameQueue    |     | SyncController|  音视频同步
+|  Video(12)    |     +---------------+
++-------+-------+     +---------------+
+        |             | SeekController|  打断三队列→Seek→清队列→重置时钟
+        |             +---------------+
+        v             +---------------+
++---------------+     | SpeedController| 变速
+| Renderer(SDL) |     +---------------+
+|  + OSDManager |     +---------------+
+|  + Subtitle   |     | SubtitleManager| .srt/.ass 解析
++---------------+     +---------------+
+                      +---------------+
+                      | PlaylistManager| 列表 + 自动连播
+                      +---------------+
+```
 
-AVPacket
+### 线程模型
 
-|
+| 线程 | 职责 |
+| ---- | ---- |
+| Demux 线程 | `av_read_frame` → 按流类型分发到 Video/Audio PacketQueue |
+| Video Decode 线程 | 取视频包 → 解码 → clone 入 FrameQueue（最多 12 帧） |
+| Audio Decode 线程 | 取音频包 → 解码 → 重采样 → 变速 → Push 到 PCMQueue |
+| 主线程（Render） | 取视频帧 → 同步等待/丢帧 → SDL 渲染 + OSD + 事件处理 |
 
-avcodec_send_packet()
+### 同步策略（音频主时钟）
 
-|
+- 音频播放更稳定，作为时间基准（AudioClock = base + played × speedFactor）
+- 视频提前：按剩余时间分片等待（≤100ms），避免阻塞过久
+- 视频落后 >50ms：直接丢帧追赶
+- 无音频流：按 `frameDuration / speed` 均匀播放（降级为 Video only mode）
 
-avcodec_receive_frame()
+### Seek 流程
 
-|
+```
+用户按 ←/→ → SeekController::Request → Run 循环消费
+  → 打断三队列（Interrupt）→ av_seek_frame → 清空队列
+  → ResetInterrupt → 解码器 flush → 时钟重置 → seekGeneration++
+```
 
-AVFrame
+### 队列背压
 
-
-处理：
-
-- H.264/H.265 视频解码
-- 音频解码
-- EAGAIN 状态
-- EOF 状态
-- Decoder Flush
-
-
-核心对象：
-
-- AVCodecContext
-- AVPacket
-- AVFrame
-
-
----
-
-# 3. PacketQueue
-
-用于缓存 Demux 线程读取的数据。
-
-作用：
-
-- 解耦读取速度和解码速度
-- 防止线程阻塞
-- 实现生产者消费者模型
-
-
-结构：
-
-
-Demux Thread
-
-  |
-  v
-
-PacketQueue
-
-  |
-  v
-
-Decoder Thread
-
-
-
-线程同步：
-
-- mutex
-- condition_variable
-
-
-当：
-
-### 队列为空
-
-消费者等待：
-
-
-condition_variable.wait()
-
-
-
-### 队列有数据
-
-消费者继续读取。
-
+- `MAX_VIDEO_PACKETS = 120`、`MAX_AUDIO_PACKETS = 60`、`MAX_VIDEO_FRAMES = 12`（Player.h 常量）
+- 队列满时生产者等待，暂停即背压自停（不空转 CPU）
 
 ---
 
-# 4. FrameQueue
+## 编译说明（Windows / MSVC）
 
-用于缓存解码后的 Frame。
+### 环境要求
 
-作用：
+- Windows 10/11 + Visual Studio 2022（含 C++ 桌面开发）
+- FFmpeg 8.x（本项目使用 avcodec-62 / avutil-60 等 8.x 库，8.x 已移除 `AVCodecContext::qscale`，mjpeg 画质改用私有选项 `q`）
+- SDL2 2.32.8
+- SDL2_ttf 2.24.0（OSD 中文字体渲染）
 
-- 解耦 Decoder 和 Renderer
-- 防止渲染速度影响解码
+### 依赖目录（vcxproj 中配置）
 
+| 依赖 | 路径 |
+| ---- | ---- |
+| FFmpeg | `D:\FFmpeg`（含 include / lib，dll 与 exe 同目录） |
+| SDL2 | `D:\SDL2`（2.32.8） |
+| SDL2_ttf | `D:\library\SDL2_tff\SDL2_ttf-2.24.0` |
+| 中文字体 | `Font\simhei.ttf`（项目内，随 exe 输出目录一起拷贝） |
 
-流程：
+> 换机器编译时需同步修改 vcxproj 中的 Include/库路径和 DLL 拷贝路径，或改用环境变量。
 
+### 编译步骤
 
-Decoder
+```bat
+:: 命令行 MSBuild（也可直接用 Visual Studio 打开 sln）
+"D:\application\visual studio\IDE\MSBuild\Current\Bin\MSBuild.exe" ^
+  FFmpeg_text_claw.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+```
 
-|
+或打开 `FFmpeg_text_claw.sln` → 生成 → 重新生成解决方案（Debug/Release + x64）。
 
-AVFrame
+输出：`x64\Release\FFmpeg_text_claw.exe`（构建后需把 FFmpeg/SDL2 DLL 与 Font 目录放到 exe 旁）。
 
-|
+### 编译注意事项（踩坑记录）
 
-FrameQueue
-
-|
-
-Renderer
-
-
-
----
-
-# 5. 视频渲染模块
-
-基于 SDL2 实现。
-
-
-流程：
-
-
-AVFrame(YUV420P)
-
-    |
-
-SDL_UpdateYUVTexture()
-
-    |
-
-SDL_RenderCopy()
-
-    |
-
-Display
-
-
-
-支持：
-
-- YUV420P 渲染
-- 窗口缩放
-- 全屏切换
-- 视频刷新控制
-
+1. **源码编码**：源文件为 UTF-8 无 BOM 且含中文注释，所有 `.cpp` 必须加编译选项 `/utf-8`，否则 MSVC 按 GBK 解析产生乱码/警告（C4828）。
+2. **子目录 include**：`#include "Audio/PCMQueue.h"` 这类子目录引用，依赖 `$(ProjectDir);` 已加入 AdditionalIncludeDirectories。
+3. **新增 .cpp 文件**：必须手动注册进 `.vcxproj` 和 `.vcxproj.filters`，否则不会被编译。
+4. **FFmpeg 8.x**：`qscale` 字段已移除，mjpeg 编码质量用 `av_opt_set_int(ctx, "q", 8, 0)`。
+5. **SDL_MAIN_HANDLED**：main.cpp 顶部已定义，避免 SDL 改写 Win32 入口。
 
 ---
 
-# 6. 音频播放模块
+## 项目目录结构
 
+```
+FFmpeg_text_claw
+├── main.cpp                 # 入口：命令行解析（-v / --log-file）+ 播放列表
+├── Player.h / Player.cpp    # 控制中心：三线程 + 状态机 + 媒体切换
+├── Demuxer.h / .cpp         # 解封装：avformat_open_input / ReadPacket / Seek
+├── VideoDecoder.h / .cpp    # 视频解码（SendPacket / ReceiveFrame / Flush）
+├── AudioDecoder.h / .cpp    # 音频解码
+├── AudioDevice.h / .cpp     # SDL 音频输出（PCMQueue + AudioClock + 音量）
+├── AudioResampler.h / .cpp  # 重采样（SwrContext）
+├── Renderer.h / .cpp        # SDL 渲染（YUV 纹理）
+├── OSDManager.h / .cpp      # OSD：进度 / 状态 / 字幕 / 提示
+├── Event.h / .cpp           # 键盘事件 → 播放器控制
+├── FontManager.h / .cpp     # SDL_ttf 中文字体
+├── Screenshot.h / .cpp      # 截图（废弃，由 ScreenshotManager 取代）
+├── PlayerState.h            # 播放状态枚举
+├── Audio\                  # PCMQueue / SpeedController / VolumeController / AudioSpeedController
+├── Playlist\               # PlaylistManager（多文件 + 自动连播）
+├── Queue\                  # PacketQueue / FrameQueue
+├── Screenshot\             # ScreenshotManager（PNG/JPG）
+├── Seek\                   # SeekController
+├── Statistics\             # PlayerStatistics（缓冲统计）
+├── Subtitle\               # SubtitleManager（.srt / .ass 解析）
+├── Sync\                   # AudioClock / Clock / SyncController
+├── Utils\                  # Logger（日志系统）/ ErrorHandler / FFmpegPtr
+├── Font\simhei.ttf         # 中文字体
+├── FFmpeg_text_claw.sln / .vcxproj
+└── README.md
+```
 
-音频处理流程：
-
-
-AVFrame
-
-|
-
-SwrContext
-
-|
-
-PCM
-
-|
-
-SDL Audio Callback
-
-|
-
-Speaker
-
-
-
-SwrContext负责：
-
-- 采样率转换
-- 声道布局转换
-- Sample Format转换
-
-
-例如：
-
-
-AAC
-
-↓
-
-FLTP
-
-↓
-
-S16 PCM
-
-↓
-
-SDL Output
-
-
+> `Decoder.*`、`Input.*`、`Audio\AudioMixer.*` 已从工程移除（磁盘保留，不参与编译）。
 
 ---
 
-# 多线程模型
+## 日志系统
 
-
-播放器采用四线程结构：
-
-
-## Demux Thread
-
-负责：
-
-- 文件读取
-- Packet生成
-- 分发音视频数据
-
-
-## Video Decode Thread
-
-负责：
-
-- 视频Packet读取
-- FFmpeg解码
-- Frame生成
-
-
-## Audio Decode Thread
-
-负责：
-
-- 音频Packet读取
-- 音频解码
-- PCM准备
-
-
-## Render Thread
-
-负责：
-
-- 视频刷新
-- SDL渲染
-
-
-整体模型：
-
-             Demux Thread
-
-                   |
-                   |
-
-          +--------+--------+
-
-          |                 |
-
-          v                 v
-
-   Video Packet       Audio Packet
-
-          |                 |
-
-          v                 v
-
-   Video Decoder      Audio Decoder
-
-          |                 |
-
-          v                 |
-
-    FrameQueue          SDL Audio
-
-          |
-
-          v
-
-    SDL Renderer
-
-
----
-
-# 音视频同步
-
-
-播放器采用：
-
-## Audio Clock 主时钟模型
-
-
-原因：
-
-音频播放通常更加稳定，因此以音频时间作为基准。
-
-
-同步流程：
-
-
-Audio Clock
-
-  |
-
-  v
-
-video_pts - audio_clock
-
-  |
-
-  v
-
-计算偏差
-
-  |
-
-  v
-
-调整视频显示时间
-
-
-
-策略：
-
-### 视频领先
-
-等待显示：
-
-
-delay += diff
-
-
-
-### 视频落后
-
-减少等待或丢帧：
-
-
-drop frame
-
-
-
----
-
-# Seek 实现
-
-
-Seek流程：
-
-
-User Seek
-
-|
-
-av_seek_frame()
-
-|
-
-Clear PacketQueue
-
-|
-
-Clear FrameQueue
-
-|
-
-avcodec_flush_buffers()
-
-|
-
-Reset Clock
-
-|
-
-Resume Decode
-
-
-
-解决：
-
-- 旧Frame残留
-- 时间戳错误
-- Decoder缓存问题
-
-
----
-
-# 播放状态管理
-
-
-播放器内部维护状态：
+轻量流式日志（`Utils\Logger.h/.cpp`），与 `std::cout` 同风格：
 
 ```cpp
-enum PlayerState
-{
-    PLAYING,
-    PAUSED,
-    STOPPED,
-    SEEKING
-};
+Logger::Info()  << "[Main] Open : " << path << std::endl;
+Logger::Warn()  << "[Player] Video only mode" << std::endl;
+Logger::Error() << "[Main] Init failed" << std::endl;
+```
 
-状态控制：
+- 输出格式：`[HH:MM:SS.mmm] [INFO ] 消息`
+- 级别：DEBUG / INFO / WARN / ERROR，默认 INFO（`-v` 开启 DEBUG）
+- 线程安全（原子级别 + 互斥锁）；被过滤的高频日志零开销
+- `--log-file xxx.log` 同时写文件（追加模式）
 
-PLAYING
+---
 
-    |
-    v
+## 后续计划
 
-PAUSED
-
-    |
-    v
-
-PLAYING
-
-暂停时：
-
-Decoder线程停止工作
-condition_variable等待
-避免CPU空转
-已实现功能
-功能	状态
-MP4播放	✅
-FFmpeg解封装	✅
-H264/H265解码	✅
-SDL2视频渲染	✅
-SDL音频播放	✅
-音频重采样	✅
-多线程解码	✅
-PacketQueue	✅
-FrameQueue	✅
-Pause/Resume	✅
-Seek跳转	✅
-音视频同步	✅
-CMake构建	✅
-项目目录结构
-FFmpeg_Test
-
-├── Decoder
-│   ├── VideoDecoder
-│   └── AudioDecoder
-│
-├── Demux
-│
-├── Queue
-│   ├── PacketQueue
-│   └── FrameQueue
-│
-├── Renderer
-│   └── VideoRenderer
-│
-├── Audio
-│   └── AudioOutput
-│
-├── Player
-│   └── PlayerController
-│
-├── CMakeLists.txt
-│
-└── README.md
-编译环境
-Windows
-
-环境：
-
-Windows 10/11
-Visual Studio 2022
-FFmpeg
-SDL2
-CMake
-
-编译：
-
-mkdir build
-
-cd build
-
-cmake ..
-
-cmake --build .
-Linux
-
-支持：
-
-GCC
-CMake
-FFmpeg
-SDL2
-
-编译方式：
-
-mkdir build
-
-cd build
-
-cmake ..
-
-make
-后续计划
- 完善播放器UI
- 增加字幕渲染
- 增加倍速播放
- 增加RTSP/RTMP网络流播放
- 增加硬件解码支持(NVDEC)
- 增加OpenGL渲染优化
- 增加Linux完整测试
-Learning Notes
-
-开发过程中主要学习：
-
-FFmpeg API调用流程
-AVPacket / AVFrame生命周期管理
-多线程播放器架构
-音视频同步算法
-SDL2音视频输出机制
-C++模块化工程设计
+- 增加 RTSP / RTMP 网络流播放
+- 增加硬件解码（NVDEC / DXVA2）
+- 播放器 UI 完善
+- 真实字幕文件端到端验证（.srt 渲染已实现，尚未用真实文件回归）
