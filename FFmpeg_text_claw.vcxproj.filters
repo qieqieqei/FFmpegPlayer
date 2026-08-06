@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="源文件">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="头文件">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="资源文件">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Audio">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000001}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Queue">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000002}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Sync">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000003}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Screenshot">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000004}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Statistics">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000005}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Utils">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000006}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Seek">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000007}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Subtitle">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000008}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Playlist">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000009}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Demuxer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="VideoDecoder.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Player.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Event.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="FontManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="OSDManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="AudioDecoder.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="AudioResampler.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="AudioDevice.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Audio\AudioSpeedController.cpp">
+      <Filter>Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Audio\PCMQueue.cpp">
+      <Filter>Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Audio\SpeedController.cpp">
+      <Filter>Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Audio\VolumeController.cpp">
+      <Filter>Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Queue\PacketQueue.cpp">
+      <Filter>Queue</Filter>
+    </ClCompile>
+    <ClCompile Include="Queue\FrameQueue.cpp">
+      <Filter>Queue</Filter>
+    </ClCompile>
+    <ClCompile Include="Sync\AudioClock.cpp">
+      <Filter>Sync</Filter>
+    </ClCompile>
+    <ClCompile Include="Sync\Clock.cpp">
+      <Filter>Sync</Filter>
+    </ClCompile>
+    <ClCompile Include="Sync\SyncController.cpp">
+      <Filter>Sync</Filter>
+    </ClCompile>
+    <ClCompile Include="Seek\SeekController.cpp">
+      <Filter>Seek</Filter>
+    </ClCompile>
+    <ClCompile Include="Screenshot\ScreenshotManager.cpp">
+      <Filter>Screenshot</Filter>
+    </ClCompile>
+    <ClCompile Include="Statistics\PlayerStatistics.cpp">
+      <Filter>Statistics</Filter>
+    </ClCompile>
+    <ClCompile Include="Subtitle\SubtitleManager.cpp">
+      <Filter>Subtitle</Filter>
+    </ClCompile>
+    <ClCompile Include="Playlist\PlaylistManager.cpp">
+      <Filter>Playlist</Filter>
+    </ClCompile>
+    <ClCompile Include="Utils\ErrorHandler.cpp">
+      <Filter>Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="Utils\Logger.cpp">
+      <Filter>Utils</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Demuxer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="VideoDecoder.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Player.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="PlayerState.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Event.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="FontManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="OSDManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="AudioDecoder.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="AudioResampler.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="AudioDevice.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Audio\AudioSpeedController.h">
+      <Filter>Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Audio\PCMQueue.h">
+      <Filter>Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Audio\SpeedController.h">
+      <Filter>Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Audio\VolumeController.h">
+      <Filter>Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Queue\PacketQueue.h">
+      <Filter>Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="Queue\FrameQueue.h">
+      <Filter>Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="Sync\AudioClock.h">
+      <Filter>Sync</Filter>
+    </ClInclude>
+    <ClInclude Include="Sync\Clock.h">
+      <Filter>Sync</Filter>
+    </ClInclude>
+    <ClInclude Include="Sync\SyncController.h">
+      <Filter>Sync</Filter>
+    </ClInclude>
+    <ClInclude Include="Seek\SeekController.h">
+      <Filter>Seek</Filter>
+    </ClInclude>
+    <ClInclude Include="Screenshot\ScreenshotManager.h">
+      <Filter>Screenshot</Filter>
+    </ClInclude>
+    <ClInclude Include="Statistics\PlayerStatistics.h">
+      <Filter>Statistics</Filter>
+    </ClInclude>
+    <ClInclude Include="Subtitle\SubtitleManager.h">
+      <Filter>Subtitle</Filter>
+    </ClInclude>
+    <ClInclude Include="Playlist\PlaylistManager.h">
+      <Filter>Playlist</Filter>
+    </ClInclude>
+    <ClInclude Include="Utils\ErrorHandler.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Utils\FFmpegPtr.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Utils\Logger.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
