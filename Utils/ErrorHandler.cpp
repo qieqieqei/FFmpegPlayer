@@ -22,6 +22,10 @@ const char* ErrorHandler::TagName(ErrorTag tag)
     case ErrorTag::Queue:       return "[Queue]";
     case ErrorTag::Screenshot:  return "[Screenshot]";
     case ErrorTag::Player:      return "[Player]";
+    case ErrorTag::Encoder:     return "[Encoder]";
+    case ErrorTag::Muxer:       return "[Muxer]";
+    case ErrorTag::Filter:      return "[Filter]";
+    case ErrorTag::Network:     return "[Network]";
     case ErrorTag::General:
     default:                    return "[General]";
     }

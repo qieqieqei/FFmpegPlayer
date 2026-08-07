@@ -34,7 +34,11 @@ enum class ErrorTag
     Sync,        // 同步
     Queue,       // 队列
     Screenshot,  // 截图
-    Player       // 播放器
+    Player,      // 播放器
+    Encoder,     // 编码器
+    Muxer,       // 封装
+    Filter,      // 滤镜
+    Network      // 网络
 };
 
 class ErrorHandler

@@ -40,6 +40,27 @@
     <Filter Include="Playlist">
       <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000009}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Config">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Input">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Network">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Encoder">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Muxer">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Filter">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Hardware">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000010}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -50,6 +71,39 @@
     </ClCompile>
     <ClCompile Include="Demuxer.cpp">
       <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Encoder\AudioEncoder.cpp">
+      <Filter>Encoder</Filter>
+    </ClCompile>
+    <ClCompile Include="Encoder\VideoEncoder.cpp">
+      <Filter>Encoder</Filter>
+    </ClCompile>
+    <ClCompile Include="Filter\AudioFilter.cpp">
+      <Filter>Filter</Filter>
+    </ClCompile>
+    <ClCompile Include="Filter\FilterGraph.cpp">
+      <Filter>Filter</Filter>
+    </ClCompile>
+    <ClCompile Include="Filter\VideoFilter.cpp">
+      <Filter>Filter</Filter>
+    </ClCompile>
+    <ClCompile Include="Muxer\FLVMuxer.cpp">
+      <Filter>Muxer</Filter>
+    </ClCompile>
+    <ClCompile Include="Muxer\HLSMuxer.cpp">
+      <Filter>Muxer</Filter>
+    </ClCompile>
+    <ClCompile Include="Muxer\Muxer.cpp">
+      <Filter>Muxer</Filter>
+    </ClCompile>
+    <ClCompile Include="Hardware\CUDAContext.cpp">
+      <Filter>Hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="Hardware\HardwareDecoder.cpp">
+      <Filter>Hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="Network\StreamMonitor.cpp">
+      <Filter>Network</Filter>
     </ClCompile>
     <ClCompile Include="VideoDecoder.cpp">
       <Filter>源文件</Filter>
@@ -86,6 +140,30 @@
     </ClCompile>
     <ClCompile Include="Audio\VolumeController.cpp">
       <Filter>Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Config\ConfigManager.cpp">
+      <Filter>Config</Filter>
+    </ClCompile>
+    <ClCompile Include="Input\InputSource.cpp">
+      <Filter>Input</Filter>
+    </ClCompile>
+    <ClCompile Include="Input\FileInput.cpp">
+      <Filter>Input</Filter>
+    </ClCompile>
+    <ClCompile Include="Input\NetworkInput.cpp">
+      <Filter>Input</Filter>
+    </ClCompile>
+    <ClCompile Include="Input\RTSPClient.cpp">
+      <Filter>Input</Filter>
+    </ClCompile>
+    <ClCompile Include="Network\NetworkBuffer.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="Network\NetworkStatistics.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="Network\BufferController.cpp">
+      <Filter>Network</Filter>
     </ClCompile>
     <ClCompile Include="Queue\PacketQueue.cpp">
       <Filter>Queue</Filter>
@@ -128,6 +206,39 @@
     <ClInclude Include="Demuxer.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Encoder\AudioEncoder.h">
+      <Filter>Encoder</Filter>
+    </ClInclude>
+    <ClInclude Include="Encoder\VideoEncoder.h">
+      <Filter>Encoder</Filter>
+    </ClInclude>
+    <ClInclude Include="Filter\AudioFilter.h">
+      <Filter>Filter</Filter>
+    </ClInclude>
+    <ClInclude Include="Filter\FilterGraph.h">
+      <Filter>Filter</Filter>
+    </ClInclude>
+    <ClInclude Include="Filter\VideoFilter.h">
+      <Filter>Filter</Filter>
+    </ClInclude>
+    <ClInclude Include="Muxer\FLVMuxer.h">
+      <Filter>Muxer</Filter>
+    </ClInclude>
+    <ClInclude Include="Muxer\HLSMuxer.h">
+      <Filter>Muxer</Filter>
+    </ClInclude>
+    <ClInclude Include="Muxer\Muxer.h">
+      <Filter>Muxer</Filter>
+    </ClInclude>
+    <ClInclude Include="Hardware\CUDAContext.h">
+      <Filter>Hardware</Filter>
+    </ClInclude>
+    <ClInclude Include="Hardware\HardwareDecoder.h">
+      <Filter>Hardware</Filter>
+    </ClInclude>
+    <ClInclude Include="Network\StreamMonitor.h">
+      <Filter>Network</Filter>
+    </ClInclude>
     <ClInclude Include="VideoDecoder.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -169,6 +280,36 @@
     </ClInclude>
     <ClInclude Include="Audio\VolumeController.h">
       <Filter>Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Config\ConfigManager.h">
+      <Filter>Config</Filter>
+    </ClInclude>
+    <ClInclude Include="Config\PlayerConfig.h">
+      <Filter>Config</Filter>
+    </ClInclude>
+    <ClInclude Include="Config\StreamConfig.h">
+      <Filter>Config</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\InputSource.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\FileInput.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\NetworkInput.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\RTSPClient.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Network\NetworkBuffer.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="Network\NetworkStatistics.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="Network\BufferController.h">
+      <Filter>Network</Filter>
     </ClInclude>
     <ClInclude Include="Queue\PacketQueue.h">
       <Filter>Queue</Filter>

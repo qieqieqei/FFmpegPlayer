@@ -1,0 +1,18 @@
+{
+    "rtmp_url": "rtmp://localhost/live/test",
+    "video_codec": "h264_nvenc",
+    "audio_codec": "aac",
+    "bitrate_kbps": 4000,
+    "rtsp_transport": "tcp",
+    "rtsp_timeout_ms": 10000,
+    "network_timeout_ms": 10000,
+    "low_latency": true,
+    "reconnect_max_attempts": 5,
+    "reconnect_delay_ms": 2000,
+    "max_buffer_packets": 600,
+    "buffer_target_ms": 300,
+    "hls_segment_duration_sec": 4,
+    "hls_list_size": 6,
+    "video_filter": "",
+    "audio_filter": ""
+}

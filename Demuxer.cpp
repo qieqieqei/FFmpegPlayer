@@ -6,6 +6,10 @@
 #include <iostream>
 #include <algorithm>
 
+// ============================================================
+// Demuxer - 解复用器（7.1：接入 InputSource）
+// ============================================================
+
 Demuxer::Demuxer()
 {
 }
@@ -16,46 +20,69 @@ Demuxer::~Demuxer()
 }
 
 bool Demuxer::Open(
-    const std::string& path)
+    const std::string& url)
 {
-    // ---------- 打开输入文件 ----------
+    // ---------- 按 URL 协议创建输入源（7.1） ----------
 
-    int ret =
-        avformat_open_input(
-            &fmt,
-            path.c_str(),
-            nullptr,
+    source =
+        InputSource::Create(
+            url,
+            networkConfigApplied ?
+            &networkConfig :
             nullptr);
 
-    if (ret < 0)
+    if (!source)
     {
-        ErrorHandler::LogFFmpeg(
+        ErrorHandler::Log(
             ErrorTag::Decoder,
-            "avformat_open_input",
-            ret);
+            "Create input source failed : " +
+            url);
 
         return false;
     }
 
-    // 读取流信息（时长、码率等）
-    ret =
-        avformat_find_stream_info(
-            fmt,
-            nullptr);
-
-    if (ret < 0)
+    if (!source->Open(url))
     {
-        ErrorHandler::LogFFmpeg(
+        ErrorHandler::Log(
             ErrorTag::Decoder,
-            "avformat_find_stream_info",
-            ret);
+            "Open input source failed : " +
+            url);
+
+        delete source;
+
+        source = nullptr;
+
+        return false;
+    }
+
+    AVFormatContext* fmt =
+        source->GetFormatContext();
+
+    if (!fmt)
+    {
+        ErrorHandler::Log(
+            ErrorTag::Decoder,
+            "No format context : " +
+            url);
+
+        delete source;
+
+        source = nullptr;
 
         return false;
     }
 
     Logger::Info()
-        << "[Demuxer] File : "
-        << path
+        << "[Demuxer] Url : "
+        << url
+        << std::endl;
+
+    Logger::Info()
+        << "[Demuxer] Protocol : "
+        << source->GetProtocol()
+        << (source->IsLive() ?
+            " [Live]" :
+            " [VOD]")
         << std::endl;
 
     Logger::Info()
@@ -63,13 +90,26 @@ bool Demuxer::Open(
         << fmt->nb_streams
         << std::endl;
 
-    Logger::Info()
-        << "[Demuxer] Duration : "
-        << fmt->duration / static_cast<double>(AV_TIME_BASE)
-        << " s"
-        << std::endl;
+    if (fmt->duration > 0)
+    {
+        Logger::Info()
+            << "[Demuxer] Duration : "
+            << fmt->duration / static_cast<double>(AV_TIME_BASE)
+            << " s"
+            << std::endl;
+    }
+    else
+    {
+        Logger::Info()
+            << "[Demuxer] Duration : unknown (live)"
+            << std::endl;
+    }
 
     // ---------- 寻找视频流 / 音频流 ----------
+
+    videoIndex = -1;
+
+    audioIndex = -1;
 
     for (unsigned int i = 0; i < fmt->nb_streams; i++)
     {
@@ -128,23 +168,36 @@ bool Demuxer::Open(
 int Demuxer::ReadPacket(
     AVPacket* pkt)
 {
-    if (!fmt)
+    if (!source)
     {
         return AVERROR(EINVAL);
     }
 
     return av_read_frame(
-        fmt,
+        source->GetFormatContext(),
         pkt);
 }
 
 bool Demuxer::Seek(
     double seconds)
 {
-    if (!fmt)
+    if (!source)
     {
         return false;
     }
+
+    // 直播流不可 Seek（RTSP/RTMP/直播 HLS）
+    if (!source->IsSeekable())
+    {
+        Logger::Warn()
+            << "[Demuxer] Seek ignored (live stream)"
+            << std::endl;
+
+        return false;
+    }
+
+    AVFormatContext* fmt =
+        source->GetFormatContext();
 
     // 目标时间夹在 [0, 时长] 内
     seconds =
@@ -207,19 +260,49 @@ bool Demuxer::Seek(
 
 void Demuxer::Close()
 {
-    if (fmt)
+    if (source)
     {
-        avformat_close_input(&fmt);
+        source->Close();
+
+        delete source;
+
+        source = nullptr;
     }
 }
 
+void Demuxer::SetAbort(
+    bool abort)
+{
+    if (source)
+    {
+        source->SetAbort(abort);
+    }
+}
+
+void Demuxer::SetNetworkConfig(
+    const StreamConfig& config)
+{
+    networkConfig = config;
+
+    networkConfigApplied = true;
+}
+
+// ============================================================
+// 流信息查询
+// ============================================================
+
 AVFormatContext* Demuxer::GetFormatContext() const
 {
-    return fmt;
+    return source ?
+        source->GetFormatContext() :
+        nullptr;
 }
 
 AVStream* Demuxer::GetVideoStream() const
 {
+    AVFormatContext* fmt =
+        GetFormatContext();
+
     if (!fmt || videoIndex < 0)
     {
         return nullptr;
@@ -230,6 +313,9 @@ AVStream* Demuxer::GetVideoStream() const
 
 AVStream* Demuxer::GetAudioStream() const
 {
+    AVFormatContext* fmt =
+        GetFormatContext();
+
     if (!fmt || audioIndex < 0)
     {
         return nullptr;
@@ -255,10 +341,52 @@ bool Demuxer::HasAudio() const
 
 double Demuxer::GetDuration() const
 {
+    AVFormatContext* fmt =
+        GetFormatContext();
+
     if (!fmt)
     {
         return 0.0;
     }
 
     return fmt->duration / static_cast<double>(AV_TIME_BASE);
+}
+
+bool Demuxer::IsNetwork() const
+{
+    return source ?
+        source->IsNetwork() :
+        false;
+}
+
+bool Demuxer::IsLive() const
+{
+    return source ?
+        source->IsLive() :
+        false;
+}
+
+bool Demuxer::IsSeekable() const
+{
+    return source ?
+        source->IsSeekable() :
+        false;
+}
+
+const std::string& Demuxer::GetProtocol() const
+{
+    static const std::string empty;
+
+    return source ?
+        source->GetProtocol() :
+        empty;
+}
+
+const std::string& Demuxer::GetUrl() const
+{
+    static const std::string empty;
+
+    return source ?
+        source->GetUrl() :
+        empty;
 }

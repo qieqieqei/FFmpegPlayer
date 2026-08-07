@@ -1,0 +1,361 @@
+#include "Hardware/HardwareDecoder.h"
+
+#include "Utils/ErrorHandler.h"
+#include "Utils/Logger.h"
+
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
+// ============================================================
+// HardwareDecoder - 硬件视频解码器
+// ============================================================
+
+HardwareDecoder::HardwareDecoder()
+{
+}
+
+HardwareDecoder::~HardwareDecoder()
+{
+    Close();
+}
+
+bool HardwareDecoder::Init(
+    CUDAContext* cuda,
+    const std::string& codecName,
+    int width,
+    int height)
+{
+    Close();
+
+    this->cuda = cuda;
+
+    // ---------- 查找解码器（h264 / hevc 软解器 + hwaccel） ----------
+
+    const AVCodec* codec =
+        avcodec_find_decoder_by_name(
+            codecName.c_str());
+
+    if (!codec)
+    {
+        ErrorHandler::Log(
+            ErrorTag::Decoder,
+            "Decoder not found : " +
+            codecName);
+
+        return false;
+    }
+
+    codecCtx =
+        avcodec_alloc_context3(codec);
+
+    if (!codecCtx)
+    {
+        ErrorHandler::Log(
+            ErrorTag::Decoder,
+            "avcodec_alloc_context3 failed");
+
+        return false;
+    }
+
+    codecCtx->width = width;
+
+    codecCtx->height = height;
+
+    // 线程数（软解回退时有效）
+    codecCtx->thread_count = 4;
+
+    // ---------- 尝试硬件加速 ----------
+
+    hardware =
+        cuda && cuda->IsAvailable();
+
+    if (hardware)
+    {
+        // 绑定硬件设备
+        codecCtx->hw_device_ctx =
+            av_buffer_ref(
+                cuda->GetDeviceContext());
+
+        hwPixFmt =
+            CUDAContext::DeviceFormat(
+                cuda->GetType());
+
+        // get_format 回调：解码器选硬件像素格式
+        codecCtx->get_format =
+            OnGetFormat;
+    }
+
+    // ---------- 打开解码器 ----------
+
+    int ret =
+        avcodec_open2(
+            codecCtx,
+            codec,
+            nullptr);
+
+    if (ret < 0)
+    {
+        ErrorHandler::LogFFmpeg(
+            ErrorTag::Decoder,
+            "avcodec_open2 (" + codecName + ")",
+            ret);
+
+        hardware = false;
+
+        // 硬件失败：清掉设备上下文，纯软解重开
+        av_buffer_unref(
+            &codecCtx->hw_device_ctx);
+
+        codecCtx->get_format = nullptr;
+
+        ret =
+            avcodec_open2(
+                codecCtx,
+                codec,
+                nullptr);
+
+        if (ret < 0)
+        {
+            ErrorHandler::LogFFmpeg(
+                ErrorTag::Decoder,
+                "avcodec_open2 fallback software",
+                ret);
+
+            Close();
+
+            return false;
+        }
+
+        Logger::Warn()
+            << "[HardwareDecoder] Fallback to software : "
+            << codecName
+            << std::endl;
+    }
+
+    // ---------- 硬件模式：创建帧池 ----------
+
+    if (hardware)
+    {
+        framesRef =
+            cuda->CreateFramesRef(
+                width,
+                height);
+
+        if (framesRef)
+        {
+            codecCtx->hw_frames_ctx =
+                av_buffer_ref(framesRef);
+        }
+        else
+        {
+            // 帧池失败也回退软解
+            Logger::Warn()
+                << "[HardwareDecoder] hw_frames_ctx failed, "
+                << "fallback to software"
+                << std::endl;
+
+            hardware = false;
+        }
+    }
+
+    frame =
+        av_frame_alloc();
+
+    if (!frame)
+    {
+        ErrorHandler::Log(
+            ErrorTag::Decoder,
+            "av_frame_alloc failed");
+
+        Close();
+
+        return false;
+    }
+
+    Logger::Info()
+        << "[HardwareDecoder] "
+        << codecName
+        << " : "
+        << (hardware ? cuda->GetTypeName() : "software")
+        << " "
+        << width
+        << "x"
+        << height
+        << std::endl;
+
+    return true;
+}
+
+bool HardwareDecoder::SendPacket(
+    AVPacket* pkt)
+{
+    if (!codecCtx)
+    {
+        return false;
+    }
+
+    int ret =
+        avcodec_send_packet(
+            codecCtx,
+            pkt);
+
+    if (ret < 0 &&
+        ret != AVERROR(EAGAIN))
+    {
+        ErrorHandler::LogFFmpeg(
+            ErrorTag::Decoder,
+            "avcodec_send_packet (hw)",
+            ret);
+
+        return false;
+    }
+
+    return true;
+}
+
+AVFrame* HardwareDecoder::ReceiveFrame()
+{
+    if (!codecCtx || !frame)
+    {
+        return nullptr;
+    }
+
+    av_frame_unref(frame);
+
+    int ret =
+        avcodec_receive_frame(
+            codecCtx,
+            frame);
+
+    if (ret < 0)
+    {
+        return nullptr;
+    }
+
+    return frame;
+}
+
+bool HardwareDecoder::TransferFrame(
+    AVFrame* hwFrame,
+    AVFrame* dst)
+{
+    if (!hwFrame || !dst)
+    {
+        return false;
+    }
+
+    // 软件帧：直接引用拷贝
+    if (!hardware)
+    {
+        av_frame_unref(dst);
+
+        return
+            av_frame_ref(dst, hwFrame) >= 0;
+    }
+
+    // 硬件帧：从显存拷回系统内存
+    av_frame_unref(dst);
+
+    int ret =
+        av_hwframe_transfer_data(
+            dst,
+            hwFrame,
+            0);
+
+    if (ret < 0)
+    {
+        ErrorHandler::LogFFmpeg(
+            ErrorTag::Decoder,
+            "av_hwframe_transfer_data",
+            ret);
+
+        return false;
+    }
+
+    // 补上时间信息（transfer 不复制这些字段）
+    dst->pts = hwFrame->pts;
+
+    dst->duration = hwFrame->duration;
+
+    dst->time_base = hwFrame->time_base;
+
+    return true;
+}
+
+void HardwareDecoder::Flush()
+{
+    if (!codecCtx)
+    {
+        return;
+    }
+
+    avcodec_flush_buffers(codecCtx);
+}
+
+void HardwareDecoder::Close()
+{
+    if (framesRef)
+    {
+        av_buffer_unref(&framesRef);
+    }
+
+    if (frame)
+    {
+        av_frame_free(&frame);
+    }
+
+    if (codecCtx)
+    {
+        avcodec_free_context(&codecCtx);
+    }
+
+    cuda = nullptr;
+
+    hwPixFmt = AV_PIX_FMT_NONE;
+
+    hardware = false;
+}
+
+bool HardwareDecoder::IsHardware() const
+{
+    return hardware;
+}
+
+bool HardwareDecoder::IsReady() const
+{
+    return codecCtx != nullptr;
+}
+
+AVCodecContext* HardwareDecoder::GetContext() const
+{
+    return codecCtx;
+}
+
+AVBufferRef* HardwareDecoder::GetHardwareFramesRef() const
+{
+    return framesRef;
+}
+
+// ============================================================
+// get_format 回调
+// ============================================================
+
+AVPixelFormat HardwareDecoder::OnGetFormat(
+    AVCodecContext* ctx,
+    const enum AVPixelFormat* pixFmts)
+{
+    // 从解码器支持的像素格式中找硬件格式
+    for (const AVPixelFormat* p = pixFmts; *p != AV_PIX_FMT_NONE; p++)
+    {
+        if (*p == AV_PIX_FMT_CUDA ||
+            *p == AV_PIX_FMT_D3D11 ||
+            *p == AV_PIX_FMT_DXVA2_VLD)
+        {
+            return *p;
+        }
+    }
+
+    // 没有硬件格式：用第一个（软解）
+    return pixFmts[0];
+}

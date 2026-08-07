@@ -52,6 +52,11 @@
 #include "Playlist/PlaylistManager.h"
 #include "Screenshot/ScreenshotManager.h"
 #include "Statistics/PlayerStatistics.h"
+#include "Config/ConfigManager.h"
+#include "Network/NetworkStatistics.h"
+#include "Network/BufferController.h"
+#include "Network/StreamMonitor.h"
+#include "Hardware/CUDAContext.h"
 #include "FontManager.h"
 #include "OSDManager.h"
 
@@ -82,6 +87,13 @@ public:
     // 初始化（打开文件、SDL、音频、OSD、字幕）
     bool Init(
         const char* filename);
+
+    // 加载并应用配置（player.json / stream.json）
+    // 应在 Init 之前调用；不调用则使用默认值
+    bool LoadConfig();
+
+    // 配置管理器访问（main 读取 default_url 等）
+    ConfigManager* GetConfigManager() const;
 
     // 渲染主循环（启动三个线程，播放直到退出）
     bool Run();
@@ -291,6 +303,24 @@ private:
 
     // 播放信息统计
     PlayerStatistics* statistics = nullptr;
+
+    // 网络流统计（7.2：FPS / 码率 / 丢包 / 延迟）
+    NetworkStatistics* networkStatistics = nullptr;
+
+    // 网络缓冲控制（7.3：缓冲水位）
+    BufferController* bufferController = nullptr;
+
+    // 流媒体监控（7.9：网络流健康巡检）
+    StreamMonitor* streamMonitor = nullptr;
+
+    // 硬件加速上下文（7.7：CUDA/D3D11VA/DXVA2 探测）
+    CUDAContext* cudaContext = nullptr;
+
+    // 硬件加速是否可用（仅探测，解码接入在后续阶段）
+    bool hardwareReady = false;
+
+    // 配置管理器（7.11）
+    ConfigManager* configManager = nullptr;
 
     // 字幕管理器
     SubtitleManager* subtitleManager = nullptr;

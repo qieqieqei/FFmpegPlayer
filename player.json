@@ -1,0 +1,10 @@
+{
+    "window_width": 1280,
+    "window_height": 720,
+    "volume": 80,
+    "playback_speed": 1.0,
+    "fullscreen": false,
+    "default_url": "",
+    "log_debug": true,
+    "log_file": ""
+}

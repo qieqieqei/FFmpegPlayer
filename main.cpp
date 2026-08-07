@@ -4,7 +4,7 @@
 //   FFmpeg_text_claw.exe [文件1] [文件2] ...
 //   FFmpeg_text_claw.exe -v [文件...]      # DEBUG 级别日志
 //   FFmpeg_text_claw.exe --log-file xxx.log [文件...]  # 同时写日志文件
-//   不带参数时播放默认测试视频
+//   不带参数时播放默认测试视频（或 player.json 的 default_url）
 //   多个文件会加入播放列表（6.8），用 [ / ] 切换
 
 #define SDL_MAIN_HANDLED
@@ -15,9 +15,10 @@
 #include <string>
 
 #include "Player.h"
+#include "Config/ConfigManager.h"
 #include "Utils/Logger.h"
 
-// 默认测试视频
+// 默认测试视频（无配置文件 / 无命令行参数时使用）
 static const char* kDefaultVideo =
     R"(D:\FFmpeg\ffmpeg\test_audio.mp4)";
 
@@ -52,11 +53,37 @@ int main(
         }
     }
 
+    // ---------- 配置（7.11）：先加载，用于决定日志级别 ----------
+
+    ConfigManager config;
+
+    config.Load(".");
+
+    const PlayerConfig& pcfg =
+        config.GetPlayerConfig();
+
+    // 未显式指定 -v 时，跟随配置文件 log_debug
+    if (level == LogLevel::Info &&
+        pcfg.logDebug)
+    {
+        level = LogLevel::Debug;
+    }
+
+    // 未显式指定 --log-file 时，跟随配置文件 log_file
+    if (logFile.empty() &&
+        !pcfg.logFile.empty())
+    {
+        logFile = pcfg.logFile;
+    }
+
     Logger::Init(
         level,
         logFile);
 
     Player player;
+
+    // 加载并应用配置（音量 / 速度；Init 内部还会用网络参数）
+    player.LoadConfig();
 
     // ---------- 播放列表（6.8）：多文件 / 单文件 / 默认 ----------
 
@@ -74,12 +101,29 @@ int main(
     }
     else
     {
-        Logger::Info()
-            << "[Main] Add : "
-            << kDefaultVideo
-            << std::endl;
+        // 无命令行参数：优先配置文件 default_url，其次内置默认
+        const std::string& defUrl =
+            player.GetConfigManager()->
+                GetPlayerConfig().defaultUrl;
 
-        player.AddToPlaylist(kDefaultVideo);
+        if (!defUrl.empty())
+        {
+            Logger::Info()
+                << "[Main] Add (config default_url) : "
+                << defUrl
+                << std::endl;
+
+            player.AddToPlaylist(defUrl);
+        }
+        else
+        {
+            Logger::Info()
+                << "[Main] Add : "
+                << kDefaultVideo
+                << std::endl;
+
+            player.AddToPlaylist(kDefaultVideo);
+        }
     }
 
     // ---------- 打开第一个文件 ----------

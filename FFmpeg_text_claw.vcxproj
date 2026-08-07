@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -119,7 +119,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>D:\FFmpeg\lib;D:\SDL2\lib\x64;D:\library\SDL2_tff\SDL2_ttf-2.24.0\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>avcodec.lib;avformat.lib;avutil.lib;swscale.lib;swresample.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>avcodec.lib;avformat.lib;avutil.lib;swscale.lib;swresample.lib;avfilter.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -140,7 +140,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>D:\FFmpeg\lib;D:\SDL2\lib\x64;D:\library\SDL2_tff\SDL2_ttf-2.24.0\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>avcodec.lib;avformat.lib;avutil.lib;swscale.lib;swresample.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>avcodec.lib;avformat.lib;avutil.lib;swscale.lib;swresample.lib;avfilter.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -151,10 +151,30 @@
     <ClCompile Include="Audio\PCMQueue.cpp" />
     <ClCompile Include="Audio\SpeedController.cpp" />
     <ClCompile Include="Audio\VolumeController.cpp" />
+    <ClCompile Include="Config\ConfigManager.cpp" />
     <ClCompile Include="Demuxer.cpp" />
+    <ClCompile Include="Encoder\AudioEncoder.cpp" />
+    <ClCompile Include="Encoder\VideoEncoder.cpp" />
     <ClCompile Include="Event.cpp" />
+    <ClCompile Include="Filter\AudioFilter.cpp" />
+    <ClCompile Include="Filter\FilterGraph.cpp" />
+    <ClCompile Include="Filter\VideoFilter.cpp" />
     <ClCompile Include="FontManager.cpp" />
+    <ClCompile Include="Hardware\CUDAContext.cpp" />
+    <ClCompile Include="Hardware\HardwareDecoder.cpp" />
+    <ClCompile Include="Input\FileInput.cpp" />
+    <ClCompile Include="Input\InputSource.cpp" />
+    <ClCompile Include="Input\NetworkInput.cpp" />
+    <ClCompile Include="Input\RTSPClient.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Muxer\FLVMuxer.cpp" />
+    <ClCompile Include="Muxer\HLSMuxer.cpp" />
+    <ClCompile Include="Muxer\Muxer.cpp" />
+    <ClCompile Include="Network\BufferController.cpp" />
+    <ClCompile Include="Network\NetworkBuffer.cpp" />
+    <ClCompile Include="Network\NetworkStatistics.cpp" />
+    <ClCompile Include="Network\RTMPPublisher.cpp" />
+    <ClCompile Include="Network\StreamMonitor.cpp" />
     <ClCompile Include="OSDManager.cpp" />
     <ClCompile Include="Player.cpp" />
     <ClCompile Include="Playlist\PlaylistManager.cpp" />
@@ -180,9 +200,31 @@
     <ClInclude Include="Audio\PCMQueue.h" />
     <ClInclude Include="Audio\SpeedController.h" />
     <ClInclude Include="Audio\VolumeController.h" />
+    <ClInclude Include="Config\ConfigManager.h" />
+    <ClInclude Include="Config\PlayerConfig.h" />
+    <ClInclude Include="Config\StreamConfig.h" />
     <ClInclude Include="Demuxer.h" />
+    <ClInclude Include="Encoder\AudioEncoder.h" />
+    <ClInclude Include="Encoder\VideoEncoder.h" />
     <ClInclude Include="Event.h" />
+    <ClInclude Include="Filter\AudioFilter.h" />
+    <ClInclude Include="Filter\FilterGraph.h" />
+    <ClInclude Include="Filter\VideoFilter.h" />
     <ClInclude Include="FontManager.h" />
+    <ClInclude Include="Hardware\CUDAContext.h" />
+    <ClInclude Include="Hardware\HardwareDecoder.h" />
+    <ClInclude Include="Input\FileInput.h" />
+    <ClInclude Include="Input\InputSource.h" />
+    <ClInclude Include="Input\NetworkInput.h" />
+    <ClInclude Include="Input\RTSPClient.h" />
+    <ClInclude Include="Muxer\FLVMuxer.h" />
+    <ClInclude Include="Muxer\HLSMuxer.h" />
+    <ClInclude Include="Muxer\Muxer.h" />
+    <ClInclude Include="Network\BufferController.h" />
+    <ClInclude Include="Network\NetworkBuffer.h" />
+    <ClInclude Include="Network\NetworkStatistics.h" />
+    <ClInclude Include="Network\RTMPPublisher.h" />
+    <ClInclude Include="Network\StreamMonitor.h" />
     <ClInclude Include="OSDManager.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="PlayerState.h" />

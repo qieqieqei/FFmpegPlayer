@@ -11,6 +11,9 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "Network/StreamMonitor.h"
+#include "Hardware/CUDAContext.h"
+
 Player::Player()
 {
 }
@@ -18,6 +21,67 @@ Player::Player()
 Player::~Player()
 {
     Close();
+}
+
+// ============================================================
+// 配置加载（7.11）
+//
+// 读取 exe 目录 / 当前目录下的 player.json 与 stream.json，
+// 文件缺失时使用内置默认值（不报错）。
+// 应在 Init 之前调用；可多次调用（重新加载）。
+// ============================================================
+
+bool Player::LoadConfig()
+{
+    // 常驻：仅创建一次
+    if (!configManager)
+    {
+        configManager =
+            new ConfigManager();
+    }
+
+    if (!configManager->Load("."))
+    {
+        Logger::Warn()
+            << "[Player] Config load failed, use defaults"
+            << std::endl;
+    }
+
+    const PlayerConfig& cfg =
+        configManager->GetPlayerConfig();
+
+    // ---------- 应用配置 ----------
+
+    // 播放速度（0.5 ~ 2.0）
+    if (cfg.playbackSpeed > 0.1 &&
+        cfg.playbackSpeed <= 2.0)
+    {
+        playbackSpeed =
+            cfg.playbackSpeed;
+    }
+
+    // 音量（0~100）
+    if (cfg.volume >= 0 &&
+        cfg.volume <= 100)
+    {
+        volume =
+            cfg.volume;
+    }
+
+    Logger::Info()
+        << "[Player] Config loaded : "
+        << "speed "
+        << playbackSpeed
+        << ", volume "
+        << volume
+        << std::endl;
+
+    return true;
+}
+
+ConfigManager* Player::GetConfigManager() const
+{
+    return configManager;
 }
 
 // ============================================================
@@ -72,6 +136,33 @@ bool Player::Init(
     seekController =
         new SeekController();
 
+    // 网络流统计（7.2）
+    networkStatistics =
+        new NetworkStatistics();
+
+    // 网络缓冲控制（7.3）
+    bufferController =
+        new BufferController();
+
+    // 流媒体监控（7.9）：网络流健康巡检 + 告警
+    streamMonitor =
+        new StreamMonitor();
+
+    if (configManager)
+    {
+        streamMonitor->Init(
+            networkStatistics,
+            configManager->GetStreamConfig());
+    }
+
+    // 硬件加速探测（7.7）：CUDA -> D3D11VA -> DXVA2，
+    // 失败不影响播放（解码仍走软解）
+    cudaContext =
+        new CUDAContext();
+
+    hardwareReady =
+        cudaContext->Init();
+
     // 字幕管理器
     subtitleManager =
         new SubtitleManager();
@@ -116,6 +207,13 @@ bool Player::OpenMedia(
     demuxer =
         new Demuxer();
 
+    // 网络参数（rtsp_transport / 超时 / 低延迟，来自 stream.json）
+    if (configManager)
+    {
+        demuxer->SetNetworkConfig(
+            configManager->GetStreamConfig());
+    }
+
     if (!demuxer->Open(path))
     {
         ErrorHandler::Log(
@@ -124,6 +222,35 @@ bool Player::OpenMedia(
             path);
 
         return false;
+    }
+
+    // 网络流：按直播/点播设置缓冲策略（7.3）
+    if (bufferController)
+    {
+        bufferController->SetLive(
+            demuxer->IsLive());
+    }
+
+    if (networkStatistics)
+    {
+        networkStatistics->Reset();
+    }
+
+    // 流媒体监控：切换媒体时复位告警 / 活性计时
+    if (streamMonitor)
+    {
+        streamMonitor->Reset();
+    }
+
+    if (demuxer->IsNetwork())
+    {
+        Logger::Info()
+            << "[Player] Network stream : "
+            << demuxer->GetProtocol()
+            << (demuxer->IsLive() ?
+                " (live)" :
+                " (vod)")
+            << std::endl;
     }
 
     duration =
@@ -623,6 +750,12 @@ bool Player::Run()
         double pts =
             GetFramePts(frame);
 
+        // 网络统计：解码出一帧（输入 FPS）
+        if (networkStatistics)
+        {
+            networkStatistics->OnFrameDecoded();
+        }
+
         bool isStep =
             state == PlayerState::Paused;
 
@@ -709,6 +842,12 @@ bool Player::Run()
             quit);
 
         statistics->OnFrameRendered();
+
+        // 网络统计：渲染了一帧（输出 FPS）
+        if (networkStatistics)
+        {
+            networkStatistics->OnFrameRendered();
+        }
 
         // 渲染心跳（Debug 级别：默认不打印，-v 开启）
         Logger::Debug()
@@ -804,6 +943,43 @@ void Player::Close()
         delete seekController;
 
         seekController = nullptr;
+    }
+
+    if (networkStatistics)
+    {
+        delete networkStatistics;
+
+        networkStatistics = nullptr;
+    }
+
+    if (bufferController)
+    {
+        delete bufferController;
+
+        bufferController = nullptr;
+    }
+
+    if (streamMonitor)
+    {
+        delete streamMonitor;
+
+        streamMonitor = nullptr;
+    }
+
+    if (cudaContext)
+    {
+        delete cudaContext;
+
+        cudaContext = nullptr;
+    }
+
+    hardwareReady = false;
+
+    if (configManager)
+    {
+        delete configManager;
+
+        configManager = nullptr;
     }
 
     if (subtitleManager)
@@ -947,6 +1123,17 @@ bool Player::IsSubtitleEnabled() const
 void Player::RequestSeek(
     double seconds)
 {
+    // 直播流不可 Seek（RTSP/RTMP/直播 HLS）
+    if (demuxer &&
+        !demuxer->IsSeekable())
+    {
+        Logger::Warn()
+            << "[Player] Seek ignored (live stream)"
+            << std::endl;
+
+        return;
+    }
+
     // 夹在 [0, 时长] 内
     seconds =
         std::max(
@@ -1381,6 +1568,56 @@ void Player::UpdateStatistics()
             audioDevice->GetQueuedSize() : 0,   // 音频缓冲（字节）
         48000,                             // 音频采样率
         2);                                // 音频声道
+
+    // ---------- 网络缓冲监控（7.2 / 7.3） ----------
+
+    if (!networkStatistics ||
+        !bufferController)
+    {
+        return;
+    }
+
+    // 缓冲水位：包数
+    networkStatistics->SetBufferLevel(
+        videoPacketQueue.Size(),
+        MAX_VIDEO_PACKETS);
+
+    // 估算缓冲时长（毫秒）：
+    //   视频：包数 * 帧时长
+    //   音频：缓冲字节 / (采样率 * 声道 * 2字节)
+    double bufferedMs =
+        videoPacketQueue.Size() *
+        videoFrameDuration *
+        1000.0;
+
+    if (audioDevice)
+    {
+        double audioMs =
+            audioDevice->GetQueuedSize() *
+            1000.0 /
+            (48000.0 * 2 * 2);
+
+        if (audioMs > bufferedMs)
+        {
+            bufferedMs = audioMs;
+        }
+    }
+
+    // 缓冲控制：水位决策（7.3）
+    bufferController->Update(
+        bufferedMs);
+
+    // 延迟估算：近似等于缓冲时长（真实端到端延迟需 RTCP，后续实现）
+    networkStatistics->SetLatencyMs(
+        static_cast<int>(bufferedMs));
+
+    // 流媒体监控：仅网络流巡检（内部按 1s 节流）
+    if (streamMonitor &&
+        demuxer &&
+        demuxer->IsNetwork())
+    {
+        streamMonitor->Tick();
+    }
 }
 
 // ============================================================
@@ -1430,6 +1667,13 @@ void Player::StopThreads()
     audioPacketQueue.Interrupt();
 
     videoFrameQueue.Interrupt();
+
+    // 打断网络流的阻塞读取（av_read_frame 会立即返回）
+    // 否则 RTSP/HTTP 断线或超时时 join 会卡死
+    if (demuxer)
+    {
+        demuxer->SetAbort(true);
+    }
 
     if (demuxThread.joinable())
     {
@@ -1518,6 +1762,13 @@ void Player::DemuxLoop()
         }
 
         // ---------- 分发包 ----------
+
+        // 网络统计：收到一个包（7.2）
+        if (networkStatistics)
+        {
+            networkStatistics->OnPacketReceived(
+                pkt->size);
+        }
 
         if (pkt->stream_index ==
             demuxer->GetVideoIndex())

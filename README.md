@@ -8,6 +8,27 @@
 
 ## 功能清单
 
+### 网络与配置（7.x）
+- ✅ 统一输入层 `Input/`：`InputSource` 抽象基类 + 工厂（按 URL 协议自动创建），`FileInput`（本地文件，支持 `file://`）、`NetworkInput`（rtsp/rtmp/http/https/HLS，按协议注入 `rtsp_transport=tcp`、`stimeout`/`rw_timeout` 超时、`fflags=nobuffer` 低延迟选项）、`RTSPClient`（连接生命周期管理：连接 / 断开 / 自动重连，次数上限 + 间隔）
+- ✅ 中断回调：`SetAbort()` 可打断阻塞中的网络读取（`av_read_frame` 立即返回），退出 / 切换媒体不再卡死
+- ✅ 直播 / 点播自动识别：RTSP/RTMP/时长未知流按直播处理（禁止 Seek、低延迟缓冲）；点播流可 Seek
+- ✅ 网络缓冲 `Network/NetworkBuffer`：满时丢最旧包（直播低延迟策略，区别于本地背压队列），带丢弃计数
+- ✅ 网络统计 `Network/NetworkStatistics`：1s 滑动窗口统计输入/输出 FPS、码率、丢包率、缓冲水位、延迟估算
+- ✅ 缓冲控制 `Network/BufferController`：低/高水位模型（NeedBuffer / IsEnough），直播目标 300ms、点播 2000ms
+- ✅ 配置系统 `Config/`：自研轻量 JSON 解析器，`player.json`（窗口/音量/速度/默认 URL/日志）+ `stream.json`（RTSP/RTMP/编码/缓冲/HLS/滤镜参数，为后续阶段预留），缺失时用默认值不报错
+
+### 编码 / 封装 / 推流 / 滤镜（7.x 第二阶段）
+- ✅ 视频编码 `Encoder/VideoEncoder`：libx264 / libx265 / h264_nvenc；直播低延迟（libx264 `tune=zerolatency`，nvenc `preset=ll` + `bf=0`），GOP=2s，输入 YUV420P
+- ✅ 音频编码 `Encoder/AudioEncoder`：AAC / Opus；内部 swr 自动重采样为编码器所需格式（AAC→FLTP）
+- ✅ 封装 `Muxer/`：`Muxer` 薄基类（AddStream / WritePacket 自动时间基转换 / 补写尾），`FLVMuxer`（.flv 文件或 rtmp://，支持关键帧起播），`HLSMuxer`（原生 hls muxer：hls_time / hls_list_size / delete_segments 自动切片与清理）
+- ✅ RTMP 推流 `Network/RTMPPublisher`：组合 FLVMuxer（RTMP 推送 = FLV 封装 + rtmp 协议），连接 / 断开 / 失败计数 / 断线重连（次数上限 + 间隔），从关键帧开始推（接收端立即起播）
+- ✅ 滤镜 `Filter/`：`FilterGraph`（avfilter 图封装：buffer/abuffer → 滤镜链 → buffersink），`VideoFilter`（scale / hflip / drawtext 等）、`AudioFilter`（volume / highpass / atempo 等）
+- ✅ 硬件解码 `Hardware/`：`CUDAContext`（CUDA → D3D11VA → DXVA2 自动探测降级，已在本机验证 cuda 可用）、`HardwareDecoder`（硬解 + 软解自动回退 + GPU 帧零拷贝，可共享 hw_frames_ctx 给 h264_nvenc）
+- ✅ 流监控 `Network/StreamMonitor`：每秒巡检网络流（延迟 / 丢包率 / 码率 / 缓冲 / FPS），阈值告警（延迟 ≥500ms、丢包 ≥1%、无数据 5s 判定断流），已接入 Player 渲染循环（仅网络流触发）
+- ⬜ Player 集成：录制 / 推流 / HLS 开关（编码链接入播放主流程）
+- ⬜ 硬解接入解码主链路（HardwareDecoder 替换 VideoDecoder 的可选路径）
+- ⚠ FLV/RTMP 格式限制：仅支持 H.264 + AAC（Opus 不能走 FLV/RTMP 路径）
+
 ### 播放核心
 - ✅ MP4 / 常见封装格式播放（FFmpeg 解封装）
 - ✅ H.264 / H.265 视频解码（libavcodec）
@@ -235,7 +256,8 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 
 ## 后续计划
 
-- 增加 RTSP / RTMP 网络流播放
-- 增加硬件解码（NVDEC / DXVA2）
+- ✅（2026-08-08）编码 / 封装 / 推流 / 滤镜 / 硬件解码 / 流监控模块完成（7.4–7.9）
+- 编码链接入 Player（录制 / 推流 / HLS 开关）
+- 硬解接入解码主链路（HardwareDecoder 可选替换 VideoDecoder）
 - 播放器 UI 完善
 - 真实字幕文件端到端验证（.srt 渲染已实现，尚未用真实文件回归）
