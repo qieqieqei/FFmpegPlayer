@@ -10,6 +10,8 @@
 #include <sstream>
 #include <algorithm>
 #include <cstdio>
+#include <ctime>
+#include <filesystem>
 
 #include "Network/StreamMonitor.h"
 #include "Hardware/CUDAContext.h"
@@ -21,6 +23,34 @@ Player::Player()
 Player::~Player()
 {
     Close();
+}
+
+// 从编码器上下文拷贝一份 codecpar（调用方 avcodec_parameters_free 释放）
+static AVCodecParameters* CopyCodecPar(
+    AVCodecContext* ctx)
+{
+    if (!ctx)
+    {
+        return nullptr;
+    }
+
+    AVCodecParameters* par =
+        avcodec_parameters_alloc();
+
+    if (!par)
+    {
+        return nullptr;
+    }
+
+    if (avcodec_parameters_from_context(
+        par, ctx) < 0)
+    {
+        avcodec_parameters_free(&par);
+
+        return nullptr;
+    }
+
+    return par;
 }
 
 // ============================================================
@@ -1621,6 +1651,1054 @@ void Player::UpdateStatistics()
 }
 
 // ============================================================
+// 输出链：录制 / 推流 / HLS（7.4–7.6 集成）
+//
+// 设计：共享编码器 + 多路输出。
+//   一路视频编码器 + 一路音频编码器（按 stream.json 配置），
+//   编码出的包同时分发给所有活跃输出（录制文件 / RTMP / HLS），
+//   编码只做一次，CPU/GPU 开销最小。
+//
+// 线程模型：
+//   Video/Audio 线程每帧加锁调用 FeedOutput*，主线程（事件）
+//   加锁调用 Start/Stop —— outMutex 保证生命周期安全。
+//
+// 时间戳：输出流 pts 自管理（视频按帧号、音频按样本数），
+//   不依赖源流时间基，保证输出流时间戳单调。
+// ============================================================
+
+bool Player::EnsureOutEncoders()
+{
+    if (!videoDecoder)
+    {
+        return false;
+    }
+
+    if (outVideoEncoder && outAudioEncoder)
+    {
+        return true;
+    }
+
+    StreamConfig cfg =
+        configManager ?
+        configManager->GetStreamConfig() :
+        StreamConfig();
+
+    // ---------- 视频编码器 ----------
+
+    if (!outVideoEncoder)
+    {
+        AVCodecContext* vc =
+            videoDecoder->GetContext();
+
+        int fps =
+            static_cast<int>(
+                videoFrameDuration > 0 ?
+                1.0 / videoFrameDuration + 0.5 :
+                25.0);
+
+        if (fps <= 0)
+        {
+            fps = 25;
+        }
+
+        outVideoEncoder =
+            new VideoEncoder();
+
+        if (!outVideoEncoder->Init(
+            vc->width,
+            vc->height,
+            { 1, fps },
+            cfg.videoCodec,
+            cfg.bitrateKbps,
+            true))
+        {
+            ErrorHandler::Log(
+                ErrorTag::Encoder,
+                "VideoEncoder init failed : " +
+                cfg.videoCodec);
+
+            delete outVideoEncoder;
+
+            outVideoEncoder = nullptr;
+
+            return false;
+        }
+
+        Logger::Info()
+            << "[Player] Output video encoder : "
+            << outVideoEncoder->GetCodecName()
+            << " (" << vc->width << "x" << vc->height
+            << " @ " << fps << "fps, "
+            << cfg.bitrateKbps << "kbps)"
+            << std::endl;
+    }
+
+    // ---------- 音频编码器（无音频流则输出仅视频） ----------
+
+    if (!outAudioEncoder &&
+        demuxer &&
+        demuxer->GetAudioStream())
+    {
+        AVCodecParameters* ap =
+            demuxer->GetAudioStream()->codecpar;
+
+        int sr =
+            ap->sample_rate > 0 ?
+            ap->sample_rate :
+            48000;
+
+        int ch =
+            ap->ch_layout.nb_channels > 0 ?
+            ap->ch_layout.nb_channels :
+            2;
+
+        outAudioEncoder =
+            new AudioEncoder();
+
+        if (!outAudioEncoder->Init(
+            sr,
+            ch,
+            cfg.audioCodec,
+            0))
+        {
+            Logger::Warn()
+                << "[Player] AudioEncoder init failed, "
+                << "video-only output"
+                << std::endl;
+
+            delete outAudioEncoder;
+
+            outAudioEncoder = nullptr;
+        }
+        else
+        {
+            Logger::Info()
+                << "[Player] Output audio encoder : "
+                << outAudioEncoder->GetCodecName()
+                << " (" << sr << "Hz / " << ch << "ch)"
+                << std::endl;
+        }
+    }
+
+    return outVideoEncoder != nullptr;
+}
+
+AVFrame* Player::ToYuv420p(
+    AVFrame* frame)
+{
+    if (!frame)
+    {
+        return nullptr;
+    }
+
+    // 已是 YUV420P：直通，零拷贝
+    if (frame->format == AV_PIX_FMT_YUV420P)
+    {
+        return frame;
+    }
+
+    // 惰性创建转换器
+    if (!outSws)
+    {
+        outSws =
+            sws_getContext(
+                frame->width,
+                frame->height,
+                static_cast<AVPixelFormat>(
+                    frame->format),
+                frame->width,
+                frame->height,
+                AV_PIX_FMT_YUV420P,
+                SWS_BILINEAR,
+                nullptr,
+                nullptr,
+                nullptr);
+
+        if (!outSws)
+        {
+            return nullptr;
+        }
+
+        outYuvFrame =
+            av_frame_alloc();
+
+        if (!outYuvFrame)
+        {
+            return nullptr;
+        }
+
+        outYuvFrame->format =
+            AV_PIX_FMT_YUV420P;
+
+        outYuvFrame->width =
+            frame->width;
+
+        outYuvFrame->height =
+            frame->height;
+
+        if (av_frame_get_buffer(
+            outYuvFrame, 32) < 0)
+        {
+            return nullptr;
+        }
+    }
+
+    sws_scale(
+        outSws,
+        frame->data,
+        frame->linesize,
+        0,
+        frame->height,
+        outYuvFrame->data,
+        outYuvFrame->linesize);
+
+    return outYuvFrame;
+}
+
+void Player::FeedOutputVideo(
+    AVFrame* frame)
+{
+    if (!frame)
+    {
+        return;
+    }
+
+    // 视频/音频解码线程并发写 muxer，必须加锁
+    // （StopAllOutputs 在解码线程停止后调用，锁内调 Flush
+    // 不会死锁）
+    std::lock_guard<std::mutex> lock(
+        outMutex);
+
+    if (!recording &&
+        !pushing &&
+        !hlsActive)
+    {
+        return;
+    }
+
+    if (!outVideoEncoder)
+    {
+        return;
+    }
+
+    AVFrame* yuv =
+        ToYuv420p(frame);
+
+    if (!yuv)
+    {
+        return;
+    }
+
+    // 自管理 pts：按帧号递增（time_base = 1/fps）
+    yuv->pts =
+        outVideoPts++;
+
+    if (!outVideoEncoder->Encode(yuv))
+    {
+        return;
+    }
+
+    // 取出所有编码输出包并分发
+    AVPacket* pkt = nullptr;
+
+    while ((pkt =
+        outVideoEncoder->GetPacket()) != nullptr)
+    {
+        // nvenc 等编码器输出包可能不带 pts/dts
+        // （AV_NOPTS_VALUE）——统一按输出顺序重建，
+        // 保证 muxer 层时间戳单调（FLV/HLS 依赖）
+        pkt->pts =
+            outVideoPktIdx;
+
+        pkt->dts =
+            outVideoPktIdx;
+
+        pkt->duration = 1;
+
+        pkt->time_base =
+            outVideoEncoder->GetContext()->time_base;
+
+        // 所有输出都是视频流在前（index 0）
+        pkt->stream_index = 0;
+
+        outVideoPktIdx++;
+
+        DispatchVideoPacket(pkt);
+
+        av_packet_free(&pkt);
+    }
+}
+
+void Player::FeedOutputAudio(
+    AVFrame* frame)
+{
+    if (!frame)
+    {
+        return;
+    }
+
+    // 与 FeedOutputVideo 同一把锁（见其注释）
+    std::lock_guard<std::mutex> lock(
+        outMutex);
+
+    if (!recording &&
+        !pushing &&
+        !hlsActive)
+    {
+        return;
+    }
+
+    if (!outAudioEncoder)
+    {
+        return;
+    }
+
+    // 注意：**不要**修改 frame->pts！这是播放路径共享的解码帧，
+    // 改动会让 SyncController 音视频失步（实测 -25s 漂移）。
+    // aac 编码器输出包 pts 继承输入帧 pts（解码帧 pts 正常），
+    // 无需自管理。
+    if (!outAudioEncoder->Encode(frame))
+    {
+        return;
+    }
+
+    AVPacket* pkt = nullptr;
+
+    while ((pkt =
+        outAudioEncoder->GetPacket()) != nullptr)
+    {
+        // 同样兜底：音频包 pts 缺失时按输出顺序重建
+        if (pkt->pts == AV_NOPTS_VALUE)
+        {
+            pkt->pts =
+                outAudioPktIdx;
+
+            pkt->dts =
+                outAudioPktIdx;
+        }
+
+        // 音频包固定写向 index 1（编码器默认 0，必须改）
+        pkt->stream_index = 1;
+
+        outAudioPktIdx++;
+
+        DispatchAudioPacket(pkt);
+
+        av_packet_free(&pkt);
+    }
+}
+
+void Player::DispatchVideoPacket(
+    AVPacket* pkt)
+{
+    if (!pkt)
+    {
+        return;
+    }
+
+    // 注意：av_interleaved_write_frame 会消费并清空 pkt 字段，
+    // 同一包发给多个 muxer 必须逐输出 clone，否则后写的
+    // muxer 拿到 pts=NOPTS/duration=0 的脏包
+    if (recording && recordMuxer)
+    {
+        AVPacket* copy =
+            av_packet_clone(pkt);
+
+        if (copy)
+        {
+            recordMuxer->WritePacket(copy);
+
+            av_packet_free(&copy);
+        }
+    }
+
+    if (pushing && rtmpPublisher)
+    {
+        AVPacket* copy =
+            av_packet_clone(pkt);
+
+        if (copy)
+        {
+            rtmpPublisher->PushPacket(copy);
+
+            av_packet_free(&copy);
+        }
+    }
+
+    if (hlsActive && hlsMuxer)
+    {
+        AVPacket* copy =
+            av_packet_clone(pkt);
+
+        if (copy)
+        {
+            hlsMuxer->WritePacket(copy);
+
+            av_packet_free(&copy);
+        }
+    }
+}
+
+void Player::DispatchAudioPacket(
+    AVPacket* pkt)
+{
+    DispatchVideoPacket(pkt);
+}
+
+void Player::FlushOutEncoders()
+{
+    // 视频编码器尾帧
+    if (outVideoEncoder)
+    {
+        outVideoEncoder->Flush();
+
+        AVPacket* pkt = nullptr;
+
+        while ((pkt =
+            outVideoEncoder->GetPacket()) != nullptr)
+        {
+            // flush 包同样重建时间戳（编码器输出可能无 pts）
+            pkt->pts =
+                outVideoPktIdx;
+
+            pkt->dts =
+                outVideoPktIdx;
+
+            pkt->duration = 1;
+
+            pkt->time_base =
+                outVideoEncoder->GetContext()->time_base;
+
+            pkt->stream_index = 0;
+
+            outVideoPktIdx++;
+
+            DispatchVideoPacket(pkt);
+
+            av_packet_free(&pkt);
+        }
+    }
+
+    // 音频编码器尾帧
+    if (outAudioEncoder)
+    {
+        outAudioEncoder->Flush();
+
+        AVPacket* pkt = nullptr;
+
+        while ((pkt =
+            outAudioEncoder->GetPacket()) != nullptr)
+        {
+            if (pkt->pts == AV_NOPTS_VALUE)
+            {
+                pkt->pts =
+                    outAudioPktIdx;
+
+                pkt->dts =
+                    outAudioPktIdx;
+            }
+
+            pkt->stream_index = 1;
+
+            outAudioPktIdx++;
+
+            DispatchAudioPacket(pkt);
+
+            av_packet_free(&pkt);
+        }
+    }
+}
+
+void Player::StopAllOutputs()
+{
+    std::lock_guard<std::mutex> lock(
+        outMutex);
+
+    if (!recording &&
+        !pushing &&
+        !hlsActive)
+    {
+        return;
+    }
+
+    // 冲刷尾帧（写给仍在活跃的输出）
+    FlushOutEncoders();
+
+    if (recordMuxer)
+    {
+        recordMuxer->WriteTrailer();
+
+        recordMuxer->Close();
+
+        delete recordMuxer;
+
+        recordMuxer = nullptr;
+    }
+
+    if (rtmpPublisher)
+    {
+        rtmpPublisher->Stop();
+
+        delete rtmpPublisher;
+
+        rtmpPublisher = nullptr;
+    }
+
+    if (hlsMuxer)
+    {
+        hlsMuxer->WriteTrailer();
+
+        hlsMuxer->Close();
+
+        delete hlsMuxer;
+
+        hlsMuxer = nullptr;
+    }
+
+    recording = false;
+
+    pushing = false;
+
+    hlsActive = false;
+
+    ReleaseOutEncoders();
+
+    Logger::Info()
+        << "[Player] All outputs stopped"
+        << std::endl;
+}
+
+void Player::ReleaseOutEncoders()
+{
+    if (outVideoEncoder)
+    {
+        outVideoEncoder->Close();
+
+        delete outVideoEncoder;
+
+        outVideoEncoder = nullptr;
+    }
+
+    if (outAudioEncoder)
+    {
+        outAudioEncoder->Close();
+
+        delete outAudioEncoder;
+
+        outAudioEncoder = nullptr;
+    }
+
+    if (outSws)
+    {
+        sws_freeContext(outSws);
+
+        outSws = nullptr;
+    }
+
+    if (outYuvFrame)
+    {
+        av_frame_free(&outYuvFrame);
+
+        outYuvFrame = nullptr;
+    }
+
+    outVideoPts = 0;
+
+    outAudioPts = 0;
+
+    outVideoPktIdx = 0;
+
+    outAudioPktIdx = 0;
+}
+
+// ---------- 录制 ----------
+
+bool Player::StartRecording(
+    const std::string& path)
+{
+    std::lock_guard<std::mutex> lock(
+        outMutex);
+
+    if (recording)
+    {
+        return false;
+    }
+
+    if (!EnsureOutEncoders())
+    {
+        return false;
+    }
+
+    recordMuxer =
+        new FLVMuxer();
+
+    if (!recordMuxer->OpenOutput(path))
+    {
+        delete recordMuxer;
+
+        recordMuxer = nullptr;
+
+        return false;
+    }
+
+    AVCodecContext* vc =
+        outVideoEncoder->GetContext();
+
+    // 编码器上下文 -> codecpar（AddStream 内部拷贝）
+    AVCodecParameters* vPar =
+        CopyCodecPar(vc);
+
+    recordMuxer->AddVideoStream(
+        vPar,
+        vc->time_base);
+
+    avcodec_parameters_free(&vPar);
+
+    if (outAudioEncoder)
+    {
+        AVCodecParameters* aPar =
+            CopyCodecPar(
+                outAudioEncoder->GetContext());
+
+        if (aPar)
+        {
+            recordMuxer->AddAudioStream(aPar);
+
+            avcodec_parameters_free(&aPar);
+        }
+    }
+
+    if (!recordMuxer->WriteHeader())
+    {
+        recordMuxer->Close();
+
+        delete recordMuxer;
+
+        recordMuxer = nullptr;
+
+        return false;
+    }
+
+    recording = true;
+
+    Logger::Info()
+        << "[Player] Recording start : "
+        << path
+        << std::endl;
+
+    return true;
+}
+
+void Player::StopRecording()
+{
+    std::lock_guard<std::mutex> lock(
+        outMutex);
+
+    if (!recording)
+    {
+        return;
+    }
+
+    // 先冲刷尾帧（此时 recording 仍为 true，
+    // 尾帧经 Dispatch 写向本路 + 其余活跃输出）
+    FlushOutEncoders();
+
+    recording = false;
+
+    if (recordMuxer)
+    {
+        recordMuxer->WriteTrailer();
+
+        recordMuxer->Close();
+
+        delete recordMuxer;
+
+        recordMuxer = nullptr;
+    }
+
+    // 没有其他输出在用时释放编码器
+    if (!pushing && !hlsActive)
+    {
+        ReleaseOutEncoders();
+    }
+
+    Logger::Info()
+        << "[Player] Recording stopped"
+        << std::endl;
+}
+
+void Player::ToggleRecording()
+{
+    if (IsRecording())
+    {
+        StopRecording();
+
+        return;
+    }
+
+    // 生成时间戳文件名 record_YYYYMMDD_HHMMSS.flv
+    char buf[64] = { 0 };
+
+    std::time_t t =
+        std::time(nullptr);
+
+    std::tm local = { 0 };
+
+    localtime_s(&local, &t);
+
+    std::snprintf(
+        buf,
+        sizeof(buf),
+        "record_%04d%02d%02d_%02d%02d%02d.flv",
+        local.tm_year + 1900,
+        local.tm_mon + 1,
+        local.tm_mday,
+        local.tm_hour,
+        local.tm_min,
+        local.tm_sec);
+
+    StartRecording(buf);
+}
+
+// ---------- 推流 ----------
+
+bool Player::StartPushing(
+    const std::string& url)
+{
+    std::lock_guard<std::mutex> lock(
+        outMutex);
+
+    if (pushing)
+    {
+        return false;
+    }
+
+    if (!EnsureOutEncoders())
+    {
+        return false;
+    }
+
+    StreamConfig cfg =
+        configManager ?
+        configManager->GetStreamConfig() :
+        StreamConfig();
+
+    std::string target =
+        url.empty() ?
+        cfg.rtmpUrl :
+        url;
+
+    if (target.empty())
+    {
+        Logger::Warn()
+            << "[Player] No rtmp_url in stream.json"
+            << std::endl;
+
+        return false;
+    }
+
+    rtmpPublisher =
+        new RTMPPublisher();
+
+    rtmpPublisher->SetConfig(cfg);
+
+    if (!rtmpPublisher->Connect(target))
+    {
+        ErrorHandler::Log(
+            ErrorTag::Network,
+            "RTMP connect failed : " +
+            target);
+
+        delete rtmpPublisher;
+
+        rtmpPublisher = nullptr;
+
+        return false;
+    }
+
+    AVCodecContext* vc =
+        outVideoEncoder->GetContext();
+
+    AVCodecParameters* vPar =
+        CopyCodecPar(vc);
+
+    rtmpPublisher->AddVideoStream(
+        vPar,
+        vc->time_base);
+
+    avcodec_parameters_free(&vPar);
+
+    if (outAudioEncoder)
+    {
+        AVCodecParameters* aPar =
+            CopyCodecPar(
+                outAudioEncoder->GetContext());
+
+        if (aPar)
+        {
+            rtmpPublisher->AddAudioStream(aPar);
+
+            avcodec_parameters_free(&aPar);
+        }
+    }
+
+    if (!rtmpPublisher->Start())
+    {
+        rtmpPublisher->Stop();
+
+        delete rtmpPublisher;
+
+        rtmpPublisher = nullptr;
+
+        return false;
+    }
+
+    pushing = true;
+
+    Logger::Info()
+        << "[Player] Pushing start : "
+        << target
+        << std::endl;
+
+    return true;
+}
+
+void Player::StopPushing()
+{
+    std::lock_guard<std::mutex> lock(
+        outMutex);
+
+    if (!pushing)
+    {
+        return;
+    }
+
+    // 先冲刷尾帧（pushing 仍为 true，尾帧写向本路）
+    FlushOutEncoders();
+
+    pushing = false;
+
+    if (rtmpPublisher)
+    {
+        rtmpPublisher->Stop();
+
+        delete rtmpPublisher;
+
+        rtmpPublisher = nullptr;
+    }
+
+    if (!recording && !hlsActive)
+    {
+        ReleaseOutEncoders();
+    }
+
+    Logger::Info()
+        << "[Player] Pushing stopped"
+        << std::endl;
+}
+
+void Player::TogglePushing()
+{
+    if (IsPushing())
+    {
+        StopPushing();
+
+        return;
+    }
+
+    StartPushing("");
+}
+
+// ---------- HLS ----------
+
+bool Player::StartHLS(
+    const std::string& dir)
+{
+    std::lock_guard<std::mutex> lock(
+        outMutex);
+
+    if (hlsActive)
+    {
+        return false;
+    }
+
+    if (!EnsureOutEncoders())
+    {
+        return false;
+    }
+
+    StreamConfig cfg =
+        configManager ?
+        configManager->GetStreamConfig() :
+        StreamConfig();
+
+    // 创建输出目录
+    std::error_code ec;
+
+    std::filesystem::create_directories(
+        dir, ec);
+
+    std::string path = dir;
+
+    if (!path.empty() &&
+        path.back() != '/' &&
+        path.back() != '\\')
+    {
+        path += "/";
+    }
+
+    path += "index.m3u8";
+
+    hlsMuxer =
+        new HLSMuxer();
+
+    hlsMuxer->SetSegmentDuration(
+        cfg.hlsSegmentDurationSec > 0 ?
+        cfg.hlsSegmentDurationSec :
+        4.0);
+
+    hlsMuxer->SetListSize(
+        cfg.hlsListSize);
+
+    // 分段文件与 m3u8 同目录（hls_segment_filename 是相对 cwd 的路径，
+    // 必须显式拼目录，否则 segment 会落到工作目录）
+    std::string segPattern = dir;
+
+    if (!segPattern.empty() &&
+        segPattern.back() != '/' &&
+        segPattern.back() != '\\')
+    {
+        segPattern += "/";
+    }
+
+    segPattern +=
+        "segment%03d.ts";
+
+    hlsMuxer->SetSegmentFilenamePattern(
+        segPattern);
+
+    if (!hlsMuxer->OpenOutput(path))
+    {
+        delete hlsMuxer;
+
+        hlsMuxer = nullptr;
+
+        return false;
+    }
+
+    AVCodecContext* vc =
+        outVideoEncoder->GetContext();
+
+    AVCodecParameters* vPar =
+        CopyCodecPar(vc);
+
+    hlsMuxer->AddVideoStream(
+        vPar,
+        vc->time_base);
+
+    avcodec_parameters_free(&vPar);
+
+    if (outAudioEncoder)
+    {
+        AVCodecParameters* aPar =
+            CopyCodecPar(
+                outAudioEncoder->GetContext());
+
+        if (aPar)
+        {
+            hlsMuxer->AddAudioStream(aPar);
+
+            avcodec_parameters_free(&aPar);
+        }
+    }
+
+    if (!hlsMuxer->WriteHeader())
+    {
+        hlsMuxer->Close();
+
+        delete hlsMuxer;
+
+        hlsMuxer = nullptr;
+
+        return false;
+    }
+
+    hlsActive = true;
+
+    Logger::Info()
+        << "[Player] HLS start : "
+        << path
+        << std::endl;
+
+    return true;
+}
+
+void Player::StopHLS()
+{
+    std::lock_guard<std::mutex> lock(
+        outMutex);
+
+    if (!hlsActive)
+    {
+        return;
+    }
+
+    // 先冲刷尾帧（hlsActive 仍为 true，尾帧写向本路）
+    FlushOutEncoders();
+
+    hlsActive = false;
+
+    if (hlsMuxer)
+    {
+        hlsMuxer->WriteTrailer();
+
+        hlsMuxer->Close();
+
+        delete hlsMuxer;
+
+        hlsMuxer = nullptr;
+    }
+
+    if (!recording && !pushing)
+    {
+        ReleaseOutEncoders();
+    }
+
+    Logger::Info()
+        << "[Player] HLS stopped"
+        << std::endl;
+}
+
+void Player::ToggleHLS()
+{
+    if (IsHLSActive())
+    {
+        StopHLS();
+
+        return;
+    }
+
+    StartHLS("hls_out");
+}
+
+// ---------- 状态查询 ----------
+
+bool Player::IsRecording() const
+{
+    return recording;
+}
+
+bool Player::IsPushing() const
+{
+    return pushing;
+}
+
+bool Player::IsHLSActive() const
+{
+    return hlsActive;
+}
+
+// ============================================================
 // 线程：启动 / 停止
 // ============================================================
 
@@ -1888,6 +2966,9 @@ void Player::VideoDecodeLoop()
                             break;
                         }
 
+                        // 输出链（EOF 尾帧同样送编码）
+                        FeedOutputVideo(f);
+
                         // 克隆一帧入队（内部帧会被复用）
                         AVFrame* out =
                             av_frame_clone(f);
@@ -1978,6 +3059,9 @@ void Player::VideoDecodeLoop()
                 // 需要更多包，或解码结束
                 break;
             }
+
+            // 输出链（7.4–7.6）：录制 / 推流 / HLS 共享编码器
+            FeedOutputVideo(f);
 
             // 克隆一帧入队（内部帧会被复用）
             AVFrame* out =
@@ -2203,6 +3287,9 @@ bool Player::SwitchMedia(
 
 void Player::ReleaseMedia()
 {
+    // 输出链（7.4–7.6）：停止录制 / 推流 / HLS 并释放
+    StopAllOutputs();
+
     // 上一帧副本
     if (lastFrame)
     {
@@ -2422,6 +3509,10 @@ void Player::ProcessAudioFrame(
         // 到达目标位置，停止丢弃
         dropAudioUntil = -1.0;
     }
+
+    // 输出链（7.4–7.6）：录制 / 推流 / HLS 共享编码器
+    // （内部 swr 自动转为编码器所需格式，pts 自管理）
+    FeedOutputAudio(frame);
 
     // 重采样为 S16 / 48000Hz / 双声道
     uint8_t pcmBuffer[192000];

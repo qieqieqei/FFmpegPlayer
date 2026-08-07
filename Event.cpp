@@ -186,6 +186,30 @@ void HandleEvent(
                 break;
             }
 
+            case SDLK_c:
+            {
+                // 录制开 / 关（record_时间戳.flv）
+                player->ToggleRecording();
+
+                break;
+            }
+
+            case SDLK_p:
+            {
+                // RTMP 推流开 / 关（stream.json 的 rtmp_url）
+                player->TogglePushing();
+
+                break;
+            }
+
+            case SDLK_h:
+            {
+                // HLS 切片输出开 / 关（hls_out/）
+                player->ToggleHLS();
+
+                break;
+            }
+
             default:
                 break;
             }

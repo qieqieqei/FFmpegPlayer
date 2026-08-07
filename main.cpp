@@ -4,6 +4,9 @@
 //   FFmpeg_text_claw.exe [文件1] [文件2] ...
 //   FFmpeg_text_claw.exe -v [文件...]      # DEBUG 级别日志
 //   FFmpeg_text_claw.exe --log-file xxx.log [文件...]  # 同时写日志文件
+//   FFmpeg_text_claw.exe --record [文件...]   # 启动即录制（record_<时间戳>.flv）
+//   FFmpeg_text_claw.exe --hls [文件...]      # 启动即 HLS 输出（hls_out/）
+//   FFmpeg_text_claw.exe --push [文件...]     # 启动即 RTMP 推流（stream.json 的 rtmp_url）
 //   不带参数时播放默认测试视频（或 player.json 的 default_url）
 //   多个文件会加入播放列表（6.8），用 [ / ] 切换
 
@@ -32,24 +35,46 @@ int main(
 
     std::string logFile;
 
-    int firstFile = 1;
+    bool cliRecord = false;
+
+    bool cliHls = false;
+
+    bool cliPush = false;
+
+    int firstFile = -1;  // 第一个非选项参数（文件）下标
 
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "-v") == 0)
         {
             level = LogLevel::Debug;
-
-            firstFile = i + 1;
         }
         else if (std::strcmp(argv[i], "--log-file") == 0 &&
                  i + 1 < argc)
         {
             logFile = argv[i + 1];
 
-            firstFile = i + 2;
-
             i++;  // 跳过日志文件名
+        }
+        else if (std::strcmp(argv[i], "--record") == 0)
+        {
+            // 启动即录制（record_<时间戳>.flv）
+            cliRecord = true;
+        }
+        else if (std::strcmp(argv[i], "--hls") == 0)
+        {
+            // 启动即 HLS 输出（hls_out/）
+            cliHls = true;
+        }
+        else if (std::strcmp(argv[i], "--push") == 0)
+        {
+            // 启动即 RTMP 推流（stream.json 的 rtmp_url）
+            cliPush = true;
+        }
+        else if (firstFile < 0)
+        {
+            // 第一个非选项参数 = 文件起点
+            firstFile = i;
         }
     }
 
@@ -143,6 +168,23 @@ int main(
         return -1;
     }
 
+    // ---------- 启动即输出的 CLI 开关（录制 / HLS / 推流） ----------
+
+    if (cliRecord)
+    {
+        player.ToggleRecording();
+    }
+
+    if (cliHls)
+    {
+        player.ToggleHLS();
+    }
+
+    if (cliPush)
+    {
+        player.TogglePushing();
+    }
+
     // ---------- 按键提示 ----------
 
     Logger::Info()
@@ -187,6 +229,18 @@ int main(
 
     Logger::Info()
         << "ESC/Q  Exit"
+        << std::endl;
+
+    Logger::Info()
+        << "C      Toggle Recording (FLV)"
+        << std::endl;
+
+    Logger::Info()
+        << "P      Toggle RTMP Push"
+        << std::endl;
+
+    Logger::Info()
+        << "H      Toggle HLS Output"
         << std::endl;
 
     Logger::Info()

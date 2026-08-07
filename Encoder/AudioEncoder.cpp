@@ -240,10 +240,28 @@ bool AudioEncoder::Encode(
     if (ret < 0 &&
         ret != AVERROR(EAGAIN))
     {
+        // 详细字段日志：定位 EINVAL 根因
         ErrorHandler::LogFFmpeg(
             ErrorTag::Encoder,
             "avcodec_send_frame (audio)",
             ret);
+
+        ErrorHandler::Log(
+            ErrorTag::Encoder,
+            "audio frame fmt=" +
+            std::to_string(in->format) +
+            " ctx fmt=" +
+            std::to_string(ctx->sample_fmt) +
+            " rate=" +
+            std::to_string(in->sample_rate) +
+            "/" +
+            std::to_string(ctx->sample_rate) +
+            " ch=" +
+            std::to_string(in->ch_layout.nb_channels) +
+            "/" +
+            std::to_string(ctx->ch_layout.nb_channels) +
+            " nb=" +
+            std::to_string(in->nb_samples));
 
         return false;
     }
@@ -351,7 +369,15 @@ AVFrame* AudioEncoder::ConvertFrame(
             frame->nb_samples);
 
     // 释放上一帧的缓冲（av_samples_alloc 每次都会新分配）
+    // 注意：av_frame_unref 会把 format/sample_rate 重置为默认，
+    // 必须恢复，否则 avcodec_send_frame 报 EINVAL
     av_frame_unref(convFrame);
+
+    convFrame->format =
+        ctx->sample_fmt;
+
+    convFrame->sample_rate =
+        ctx->sample_rate;
 
     av_channel_layout_copy(
         &convFrame->ch_layout,
@@ -418,6 +444,10 @@ AVFrame* AudioEncoder::ConvertFrame(
 
     convFrame->nb_samples =
         converted;
+
+    // swr_convert 不复制 pts；av_frame_unref 已重置它，必须恢复
+    convFrame->pts =
+        frame->pts;
 
     return convFrame;
 }

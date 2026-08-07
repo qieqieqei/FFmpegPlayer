@@ -84,6 +84,11 @@ bool HLSMuxer::OpenOutput(
         << ")"
         << std::endl;
 
+    // 注意：hls muxer 自己管理全部 IO（playlist .tmp 文件 + 各 segment
+    // 文件），**不要** avio_open fmt->pb——否则会多出一个空的
+    // index.m3u8 文件（hls 从不写 fmt->pb），且干扰内部的
+    // .tmp → 正式文件 rename 逻辑。fmt->pb 保持 NULL 即可。
+
     return true;
 }
 

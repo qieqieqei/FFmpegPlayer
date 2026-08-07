@@ -40,6 +40,27 @@ bool FLVMuxer::OpenOutput(
         << url
         << std::endl;
 
+    // 打开输出 IO（文件或 rtmp:// 由协议层处理）
+    ret =
+        avio_open(
+            &fmt->pb,
+            url.c_str(),
+            AVIO_FLAG_WRITE);
+
+    if (ret < 0)
+    {
+        ErrorHandler::LogFFmpeg(
+            ErrorTag::Muxer,
+            "avio_open (flv)",
+            ret);
+
+        avformat_free_context(fmt);
+
+        fmt = nullptr;
+
+        return false;
+    }
+
     return true;
 }
 

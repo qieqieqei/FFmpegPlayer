@@ -366,3 +366,10 @@ screenshots/
 test.pcm
 Screenshot_0.bmp
 
+
+# Êä³ö/²âÊÔ²úÎï
+record_*.flv
+hls_out/
+segment*.ts
+e2e*.txt
+sk_*.txt

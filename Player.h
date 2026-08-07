@@ -34,6 +34,7 @@
 #include <SDL.h>
 
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -57,6 +58,11 @@
 #include "Network/BufferController.h"
 #include "Network/StreamMonitor.h"
 #include "Hardware/CUDAContext.h"
+#include "Encoder/VideoEncoder.h"
+#include "Encoder/AudioEncoder.h"
+#include "Muxer/FLVMuxer.h"
+#include "Muxer/HLSMuxer.h"
+#include "Network/RTMPPublisher.h"
 #include "FontManager.h"
 #include "OSDManager.h"
 
@@ -165,6 +171,42 @@ public:
     void TakeScreenshot(
         const std::string& format);
 
+    // ---------- 输出：录制 / 推流 / HLS（7.4–7.6 集成） ----------
+
+    // 录制到 FLV 文件（与推流 / HLS 可同时启用，共享编码器）
+    bool StartRecording(
+        const std::string& path);
+
+    void StopRecording();
+
+    // 无参切换：开始录制到 record_<时间戳>.flv，再按一次停止
+    void ToggleRecording();
+
+    // RTMP 推流（url 为空则用 stream.json 的 rtmp_url）
+    bool StartPushing(
+        const std::string& url);
+
+    void StopPushing();
+
+    // 无参切换：推流 / 停止（用配置的 rtmp_url）
+    void TogglePushing();
+
+    // HLS 切片输出（dir 下生成 index.m3u8 + segment*.ts）
+    bool StartHLS(
+        const std::string& dir);
+
+    void StopHLS();
+
+    // 无参切换：HLS 输出到 hls_out/，再按一次停止
+    void ToggleHLS();
+
+    // 输出状态查询
+    bool IsRecording() const;
+
+    bool IsPushing() const;
+
+    bool IsHLSActive() const;
+
     void ToggleFullScreen();
 
     bool IsFullScreen() const;
@@ -265,6 +307,40 @@ private:
     double GetFramePts(
         AVFrame* frame) const;
 
+    // ---------- 输出链（7.4–7.6） ----------
+
+    // 确保视频/音频编码器存在（首路输出时按 stream.json 创建）
+    bool EnsureOutEncoders();
+
+    // 视频帧送入输出链（Video 线程调用，锁内）
+    void FeedOutputVideo(
+        AVFrame* frame);
+
+    // 音频帧送入输出链（Audio 线程调用，锁内）
+    void FeedOutputAudio(
+        AVFrame* frame);
+
+    // 视频帧转 YUV420P（编码器输入格式，惰性创建 sws）
+    AVFrame* ToYuv420p(
+        AVFrame* frame);
+
+    // 分发视频编码包到所有活跃输出
+    void DispatchVideoPacket(
+        AVPacket* pkt);
+
+    // 分发音频编码包到所有活跃输出
+    void DispatchAudioPacket(
+        AVPacket* pkt);
+
+    // 冲刷编码器尾帧（停止某路输出时，尾帧写给剩余活跃输出）
+    void FlushOutEncoders();
+
+    // 停止所有输出（录制 + 推流 + HLS）
+    void StopAllOutputs();
+
+    // 释放输出链资源（编码器 / 转换器）
+    void ReleaseOutEncoders();
+
     // 更新当前播放时间 / 进度
     void SetCurrentTime(
         double time);
@@ -321,6 +397,38 @@ private:
 
     // 配置管理器（7.11）
     ConfigManager* configManager = nullptr;
+
+    // ---------- 成员：输出链（7.4–7.6） ----------
+
+    std::mutex outMutex;             // 保护输出链生命周期（主线程 vs 解码线程）
+
+    VideoEncoder* outVideoEncoder = nullptr;   // 共享视频编码器
+
+    AudioEncoder* outAudioEncoder = nullptr;   // 共享音频编码器
+
+    FLVMuxer* recordMuxer = nullptr;           // 录制（.flv 文件）
+
+    RTMPPublisher* rtmpPublisher = nullptr;    // 推流（rtmp://）
+
+    HLSMuxer* hlsMuxer = nullptr;              // HLS 切片
+
+    SwsContext* outSws = nullptr;              // 视频帧 -> YUV420P
+
+    AVFrame* outYuvFrame = nullptr;            // 转换输出帧（内部复用）
+
+    int64_t outVideoPts = 0;                   // 输出视频 pts（自管理）
+
+    int64_t outAudioPts = 0;                   // 输出音频 pts（自管理）
+
+    int64_t outVideoPktIdx = 0;                // 输出视频包序号（重建 pts）
+
+    int64_t outAudioPktIdx = 0;                // 输出音频包序号（重建 pts）
+
+    bool recording = false;                    // 录制中
+
+    bool pushing = false;                      // 推流中
+
+    bool hlsActive = false;                    // HLS 输出中
 
     // 字幕管理器
     SubtitleManager* subtitleManager = nullptr;

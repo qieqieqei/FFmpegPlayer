@@ -103,6 +103,14 @@ AVStream* Muxer::AddAudioStream(
         return nullptr;
     }
 
+    // 音频流时间基必须显式设置（默认 {0,1} 会导致
+    // WritePacket 的 av_rescale_q 结果全为 0）
+    if (codecpar->sample_rate > 0)
+    {
+        stream->time_base =
+            AVRational{ 1, codecpar->sample_rate };
+    }
+
     return stream;
 }
 
