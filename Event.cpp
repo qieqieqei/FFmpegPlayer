@@ -1,6 +1,7 @@
 #include "Event.h"
 
 #include "Player.h"
+#include "Utils/Logger.h"
 
 #include <iostream>
 

@@ -11,6 +11,7 @@
     "reconnect_delay_ms": 2000,
     "max_buffer_packets": 600,
     "buffer_target_ms": 300,
+    "hardware_decode": true,
     "hls_segment_duration_sec": 4,
     "hls_list_size": 6,
     "video_filter": "",

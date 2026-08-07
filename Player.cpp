@@ -297,6 +297,11 @@ bool Player::OpenMedia(
 
     // ---------- 视频解码器 ----------
 
+    // 硬件解码优先（配置开启 + CUDA 可用 + h264/hevc），
+    // 失败自动回退下面的软解
+    TryInitHardwareDecoder(
+        vStream->codecpar);
+
     videoDecoder =
         new VideoDecoder();
 
@@ -345,28 +350,8 @@ bool Player::OpenMedia(
         << std::endl;
 
     // ---------- YUV -> RGB 转换器 ----------
-
-    swsCtx =
-        sws_getContext(
-            vCtx->width,
-            vCtx->height,
-            vCtx->pix_fmt,
-            vCtx->width,
-            vCtx->height,
-            AV_PIX_FMT_RGB24,
-            SWS_BILINEAR,
-            nullptr,
-            nullptr,
-            nullptr);
-
-    if (!swsCtx)
-    {
-        ErrorHandler::Log(
-            ErrorTag::Player,
-            "sws_getContext failed");
-
-        return false;
-    }
+    // （惰性创建：GetSwsForFrame 按实际帧格式建，
+    //   硬解帧 NV12 / 软解帧 YUV420P 自动适配）
 
     rgbLinesize =
         vCtx->width * 3;
@@ -708,6 +693,24 @@ bool Player::Run()
                     Logger::Info()
                         << "[Player] End Of File"
                         << std::endl;
+
+                    // 自动退出计时起点（仅首轮）
+                    eofWaitStartMs =
+                        static_cast<int64_t>(
+                            SDL_GetTicks64());
+                }
+
+                // CLI 输出模式（--record/--hls/--push）：
+                // EOF 后停留 3 秒（看最后一帧）再自动退出
+                if (autoQuitOnEof &&
+                    eofWaitStartMs >= 0 &&
+                    static_cast<int64_t>(
+                        SDL_GetTicks64()) -
+                        eofWaitStartMs >= 3000)
+                {
+                    quit = true;
+
+                    continue;
                 }
 
                 // 自动播放：切下一首
@@ -1526,6 +1529,12 @@ SDL_Window* Player::GetWindow() const
     return window;
 }
 
+void Player::SetAutoQuitOnEof(
+    bool enable)
+{
+    autoQuitOnEof = enable;
+}
+
 int Player::GetVideoWidth() const
 {
     if (!videoDecoder ||
@@ -1548,8 +1557,57 @@ int Player::GetVideoHeight() const
     return videoDecoder->GetContext()->height;
 }
 
-SwsContext* Player::GetSwsContext() const
+SwsContext* Player::GetSwsForFrame(
+    AVFrame* frame)
 {
+    if (!frame)
+    {
+        return nullptr;
+    }
+
+    AVPixelFormat fmt =
+        static_cast<AVPixelFormat>(
+            frame->format);
+
+    // 格式 / 尺寸没变：复用现有转换器
+    if (swsCtx &&
+        swsSrcFmt == fmt &&
+        swsSrcW == frame->width &&
+        swsSrcH == frame->height)
+    {
+        return swsCtx;
+    }
+
+    // 变了（软解 YUV420P <-> 硬解 NV12，或新媒体）：重建
+    if (swsCtx)
+    {
+        sws_freeContext(swsCtx);
+
+        swsCtx = nullptr;
+    }
+
+    swsCtx =
+        sws_getContext(
+            frame->width,
+            frame->height,
+            fmt,
+            frame->width,
+            frame->height,
+            AV_PIX_FMT_RGB24,
+            SWS_BILINEAR,
+            nullptr,
+            nullptr,
+            nullptr);
+
+    if (swsCtx)
+    {
+        swsSrcFmt = fmt;
+
+        swsSrcW = frame->width;
+
+        swsSrcH = frame->height;
+    }
+
     return swsCtx;
 }
 
@@ -2896,6 +2954,165 @@ void Player::DemuxLoop()
 //   - 等待队列恢复后继续
 // ============================================================
 
+// ============================================================
+// 硬件解码接入辅助（7.7）
+//
+// 三个辅助函数统一“当前激活的视频解码器”入口：
+//   - hwDecoder 激活（硬解成功）时走硬解，Receive 后把 GPU 帧
+//     拷回系统内存（NV12），调用方拿到的是可直接渲染/编码的帧；
+//   - 否则走软解 videoDecoder（原逻辑不变）。
+// ============================================================
+
+void Player::FlushVideoDecoder()
+{
+    if (hwDecoder &&
+        hwDecoder->IsReady())
+    {
+        hwDecoder->Flush();
+
+        return;
+    }
+
+    if (videoDecoder)
+    {
+        videoDecoder->Flush();
+    }
+}
+
+bool Player::SendVideoPacket(
+    AVPacket* pkt)
+{
+    if (hwDecoder &&
+        hwDecoder->IsReady())
+    {
+        return hwDecoder->SendPacket(pkt);
+    }
+
+    return videoDecoder ?
+        videoDecoder->SendPacket(pkt) :
+        false;
+}
+
+AVFrame* Player::ReceiveVideoFrame()
+{
+    if (hwDecoder &&
+        hwDecoder->IsReady())
+    {
+        AVFrame* hwf =
+            hwDecoder->ReceiveFrame();
+
+        if (!hwf)
+        {
+            return nullptr;
+        }
+
+        // 惰性创建拷贝目标帧
+        if (!hwTransferFrame)
+        {
+            hwTransferFrame =
+                av_frame_alloc();
+
+            if (!hwTransferFrame)
+            {
+                return nullptr;
+            }
+        }
+
+        // GPU 帧 -> 系统内存（NV12；软解模式直接 ref）
+        if (!hwDecoder->TransferFrame(
+            hwf,
+            hwTransferFrame))
+        {
+            return nullptr;
+        }
+
+        return hwTransferFrame;
+    }
+
+    return videoDecoder ?
+        videoDecoder->ReceiveFrame() :
+        nullptr;
+}
+
+void Player::TryInitHardwareDecoder(
+    AVCodecParameters* codecpar)
+{
+    if (!codecpar ||
+        hwDecoder)
+    {
+        return;
+    }
+
+    // 配置开关
+    StreamConfig cfg =
+        configManager ?
+        configManager->GetStreamConfig() :
+        StreamConfig();
+
+    if (!cfg.hardwareDecode)
+    {
+        Logger::Info()
+            << "[Player] Hardware decode disabled "
+            << "by config"
+            << std::endl;
+
+        return;
+    }
+
+    // 硬件探测（CUDA -> D3D11VA -> DXVA2）
+    if (!cudaContext ||
+        !cudaContext->IsAvailable())
+    {
+        Logger::Info()
+            << "[Player] No hardware device, "
+            << "use software decode"
+            << std::endl;
+
+        return;
+    }
+
+    // 仅 h264 / hevc 走硬解
+    std::string codecName;
+
+    switch (codecpar->codec_id)
+    {
+    case AV_CODEC_ID_H264:
+        codecName = "h264";
+        break;
+
+    case AV_CODEC_ID_HEVC:
+        codecName = "hevc";
+        break;
+
+    default:
+        return;
+    }
+
+    if (codecpar->width <= 0 ||
+        codecpar->height <= 0)
+    {
+        return;
+    }
+
+    hwDecoder =
+        new HardwareDecoder();
+
+    if (!hwDecoder->Init(
+        cudaContext,
+        codecName,
+        codecpar))
+    {
+        Logger::Warn()
+            << "[Player] Hardware decoder init "
+            << "failed, use software"
+            << std::endl;
+
+        delete hwDecoder;
+
+        hwDecoder = nullptr;
+    }
+}
+
 void Player::VideoDecodeLoop()
 {
     // Seek 代数：每次 Seek 递增，用于判断是否需要 flush
@@ -2916,10 +3133,7 @@ void Player::VideoDecodeLoop()
         if (seekGen != lastSeekGen)
         {
             // 新的一次 Seek：清空解码器内部状态
-            if (videoDecoder)
-            {
-                videoDecoder->Flush();
-            }
+            FlushVideoDecoder();
 
             lastSeekGen = seekGen;
 
@@ -2947,19 +3161,18 @@ void Player::VideoDecodeLoop()
             if (demuxEof.load())
             {
                 // 队列取空且文件已读完：冲刷解码器剩余帧
-                if (!eofFlushed &&
-                    videoDecoder)
+                if (!eofFlushed)
                 {
                     eofFlushed = true;
 
                     // 发送 NULL 包触发解码器冲刷
-                    videoDecoder->SendPacket(nullptr);
+                    SendVideoPacket(nullptr);
 
                     // 取出所有剩余帧
                     while (true)
                     {
                         AVFrame* f =
-                            videoDecoder->ReceiveFrame();
+                            ReceiveVideoFrame();
 
                         if (!f)
                         {
@@ -3018,10 +3231,7 @@ void Player::VideoDecodeLoop()
 
         if (seekGen != lastSeekGen)
         {
-            if (videoDecoder)
-            {
-                videoDecoder->Flush();
-            }
+            FlushVideoDecoder();
 
             lastSeekGen = seekGen;
 
@@ -3034,7 +3244,12 @@ void Player::VideoDecodeLoop()
             continue;
         }
 
-        if (!videoDecoder)
+        bool videoDecReady =
+            videoDecoder != nullptr ||
+            (hwDecoder &&
+                hwDecoder->IsReady());
+
+        if (!videoDecReady)
         {
             av_packet_free(&pkt);
 
@@ -3043,7 +3258,7 @@ void Player::VideoDecodeLoop()
 
         // ---------- 解码 ----------
 
-        videoDecoder->SendPacket(pkt);
+        SendVideoPacket(pkt);
 
         av_packet_free(&pkt);
 
@@ -3052,7 +3267,7 @@ void Player::VideoDecodeLoop()
         while (true)
         {
             AVFrame* f =
-                videoDecoder->ReceiveFrame();
+                ReceiveVideoFrame();
 
             if (!f)
             {
@@ -3084,10 +3299,7 @@ void Player::VideoDecodeLoop()
                 // 说明正在 Seek：flush 后等待恢复
                 if (videoFrameQueue.IsInterrupted())
                 {
-                    if (videoDecoder)
-                    {
-                        videoDecoder->Flush();
-                    }
+                    FlushVideoDecoder();
 
                     lastSeekGen =
                         seekController ?
@@ -3383,6 +3595,12 @@ void Player::ReleaseMedia()
         swsCtx = nullptr;
     }
 
+    swsSrcFmt = AV_PIX_FMT_NONE;
+
+    swsSrcW = 0;
+
+    swsSrcH = 0;
+
     // OSD 纹理绑定旧渲染器，销毁后重新初始化
     if (osdManager &&
         fontManager)
@@ -3393,6 +3611,20 @@ void Player::ReleaseMedia()
     }
 
     // ---------- 解码器 ----------
+
+    if (hwTransferFrame)
+    {
+        av_frame_free(&hwTransferFrame);
+
+        hwTransferFrame = nullptr;
+    }
+
+    if (hwDecoder)
+    {
+        delete hwDecoder;
+
+        hwDecoder = nullptr;
+    }
 
     if (videoDecoder)
     {

@@ -893,6 +893,9 @@ void ConfigManager::LoadStream(
     stream.bufferTargetMs =
         GetInt(root, "buffer_target_ms", stream.bufferTargetMs);
 
+    stream.hardwareDecode =
+        GetBool(root, "hardware_decode", stream.hardwareDecode);
+
     stream.hlsSegmentDurationSec =
         GetInt(root, "hls_segment_duration_sec", stream.hlsSegmentDurationSec);
 

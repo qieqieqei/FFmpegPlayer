@@ -34,7 +34,7 @@ bool RenderFrame(
     // ---------- YUV -> RGB 转换 ----------
 
     SwsContext* swsCtx =
-        player->GetSwsContext();              // 颜色空间转换器
+        player->GetSwsForFrame(frame);              // 颜色空间转换器
 
     uint8_t* rgbData =
         player->GetRGBData();                 // RGB 缓冲首地址

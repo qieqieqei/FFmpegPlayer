@@ -67,6 +67,10 @@ struct StreamConfig
 
     int bufferTargetMs = 300;               // 直播目标缓冲时长（毫秒）
 
+    // ---------- 硬件解码（7.7） ----------
+
+    bool hardwareDecode = true;             // 优先硬件解码（自动回退软解）
+
     // ---------- HLS 切片（7.7） ----------
 
     int hlsSegmentDurationSec = 4;          // 单个分片时长（秒）

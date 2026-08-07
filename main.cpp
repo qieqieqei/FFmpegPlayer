@@ -185,6 +185,12 @@ int main(
         player.TogglePushing();
     }
 
+    // CLI 输出模式：EOF 后停留 3 秒自动退出（测试/批处理友好）
+    if (cliRecord || cliHls || cliPush)
+    {
+        player.SetAutoQuitOnEof(true);
+    }
+
     // ---------- 按键提示 ----------
 
     Logger::Info()

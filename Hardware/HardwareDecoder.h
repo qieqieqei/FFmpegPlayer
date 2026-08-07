@@ -39,13 +39,12 @@ public:
 
     // 初始化解码器。
     // codecName : "h264" / "hevc"
-    // width/height : 视频尺寸（hw_frames_ctx 需要）
+    // codecpar  : 视频流编码参数（含 extradata / 宽高，必需）
     // 失败（含无硬件）时自动回退软解，返回是否至少可用
     bool Init(
         CUDAContext* cuda,
         const std::string& codecName,
-        int width,
-        int height);
+        AVCodecParameters* codecpar);
 
     // 送入一个待解码的包（调用者仍需负责释放 pkt）
     bool SendPacket(

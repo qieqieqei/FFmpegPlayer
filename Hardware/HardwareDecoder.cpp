@@ -23,12 +23,16 @@ HardwareDecoder::~HardwareDecoder()
 bool HardwareDecoder::Init(
     CUDAContext* cuda,
     const std::string& codecName,
-    int width,
-    int height)
+    AVCodecParameters* codecpar)
 {
     Close();
 
     this->cuda = cuda;
+
+    if (!codecpar)
+    {
+        return false;
+    }
 
     // ---------- 查找解码器（h264 / hevc 软解器 + hwaccel） ----------
 
@@ -58,9 +62,28 @@ bool HardwareDecoder::Init(
         return false;
     }
 
-    codecCtx->width = width;
+    // 用流的编码参数填充（含 extradata——SPS/PPS，
+    // 不填的话 h264 硬解报 Invalid data）
+    int ret =
+        avcodec_parameters_to_context(
+            codecCtx,
+            codecpar);
 
-    codecCtx->height = height;
+    if (ret < 0)
+    {
+        ErrorHandler::LogFFmpeg(
+            ErrorTag::Decoder,
+            "avcodec_parameters_to_context (hw)",
+            ret);
+
+        return false;
+    }
+
+    int width =
+        codecCtx->width;
+
+    int height =
+        codecCtx->height;
 
     // 线程数（软解回退时有效）
     codecCtx->thread_count = 4;
@@ -88,7 +111,7 @@ bool HardwareDecoder::Init(
 
     // ---------- 打开解码器 ----------
 
-    int ret =
+    ret =
         avcodec_open2(
             codecCtx,
             codec,

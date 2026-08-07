@@ -58,6 +58,7 @@
 #include "Network/BufferController.h"
 #include "Network/StreamMonitor.h"
 #include "Hardware/CUDAContext.h"
+#include "Hardware/HardwareDecoder.h"
 #include "Encoder/VideoEncoder.h"
 #include "Encoder/AudioEncoder.h"
 #include "Muxer/FLVMuxer.h"
@@ -244,7 +245,14 @@ public:
 
     int GetVideoHeight() const;
 
-    SwsContext* GetSwsContext() const;
+    // EOF 后自动退出（CLI 输出模式用：--record/--hls/--push）
+    void SetAutoQuitOnEof(
+        bool enable);
+
+    // 按帧实际格式取（或惰性创建）YUV->RGB 转换器；
+    // 帧格式变化（软解 YUV420P / 硬解 NV12）时自动重建
+    SwsContext* GetSwsForFrame(
+        AVFrame* frame);
 
     uint8_t* GetRGBData() const;
 
@@ -307,6 +315,22 @@ private:
     double GetFramePts(
         AVFrame* frame) const;
 
+    // ---------- 硬件解码（7.7） ----------
+
+    // 刷新当前激活的视频解码器（硬解优先）
+    void FlushVideoDecoder();
+
+    // 送包给当前激活的视频解码器
+    bool SendVideoPacket(
+        AVPacket* pkt);
+
+    // 从当前激活的解码器取帧（硬解时已拷回系统内存，可直接用）
+    AVFrame* ReceiveVideoFrame();
+
+    // 尝试创建硬件解码器（配置开启 + CUDA 可用 + h264/hevc 时）
+    void TryInitHardwareDecoder(
+        AVCodecParameters* codecpar);
+
     // ---------- 输出链（7.4–7.6） ----------
 
     // 确保视频/音频编码器存在（首路输出时按 stream.json 创建）
@@ -355,6 +379,12 @@ private:
 
     // 视频解码器（Video 线程）
     VideoDecoder* videoDecoder = nullptr;
+
+    // 硬件视频解码器（Video 线程；激活时优先于 videoDecoder）
+    HardwareDecoder* hwDecoder = nullptr;
+
+    // 硬件帧 -> 系统内存的拷贝目标（Video 线程，复用）
+    AVFrame* hwTransferFrame = nullptr;
 
     // 音频解码器（Audio 线程）
     AudioDecoder* audioDecoder = nullptr;
@@ -468,6 +498,17 @@ private:
     SDL_Texture* rgbTexture = nullptr;     // RGB24 纹理
 
     SwsContext* swsCtx = nullptr;          // YUV -> RGB 转换
+
+    // 转换器当前源格式（格式变化时重建 swsCtx）
+    AVPixelFormat swsSrcFmt = AV_PIX_FMT_NONE;
+
+    int swsSrcW = 0;                       // 转换器源宽
+
+    int swsSrcH = 0;                       // 转换器源高
+
+    bool autoQuitOnEof = false;            // EOF 后自动退出（CLI 输出模式）
+
+    int64_t eofWaitStartMs = -1;           // EOF 等待起始（自动退出计时）
 
     uint8_t* rgbData = nullptr;            // RGB 缓冲
 
