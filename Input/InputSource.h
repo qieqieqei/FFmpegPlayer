@@ -24,10 +24,14 @@
 // 中断回调：
 //   网络流阻塞在 av_read_frame 时，SetAbort(true) 可打断，
 //   保证退出 / 切换媒体不会卡死（对文件流同样生效）
+//
+// 8.1：fmt 改为 AVFormatContextPtr（RAII）
 // ============================================================
 
 #include <string>
 #include <atomic>
+
+#include "Utils/FFmpegPtr.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -101,7 +105,7 @@ protected:
     static int InterruptCallback(
         void* opaque);
 
-    AVFormatContext* fmt = nullptr;       // 输入上下文（打开后有效）
+    AVFormatContextPtr fmt;       // 输入上下文（打开后有效，RAII）
 
     std::atomic<bool> abort{ false };     // 中断标志
 

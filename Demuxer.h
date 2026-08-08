@@ -27,9 +27,12 @@
 // 只管"拆包"，不管解码：
 //   视频解码 -> VideoDecoder（Decode 线程）
 //   音频解码 -> AudioDecoder（Audio 线程）
+//
+// 8.1：source 改为 unique_ptr（RAII）
 // ============================================================
 
 #include <string>
+#include <memory>
 
 #include "Input/InputSource.h"
 #include "Config/StreamConfig.h"
@@ -104,7 +107,7 @@ public:
 
 private:
 
-    InputSource* source = nullptr;      // 输入源（7.1）
+    std::unique_ptr<InputSource> source;   // 输入源（RAII）
 
     StreamConfig networkConfig;         // 网络参数（Open 前设置）
 

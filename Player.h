@@ -34,6 +34,7 @@
 #include <SDL.h>
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -67,6 +68,7 @@
 #include "Network/RTMPPublisher.h"
 #include "FontManager.h"
 #include "OSDManager.h"
+#include "Utils/FFmpegPtr.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -401,76 +403,76 @@ private:
     // ---------- 成员：核心对象（Player 拥有） ----------
 
     // 解复用器（Demux 线程）
-    Demuxer* demuxer = nullptr;
+    std::unique_ptr<Demuxer> demuxer;
 
     // 视频解码器（Video 线程）
-    VideoDecoder* videoDecoder = nullptr;
+    std::unique_ptr<VideoDecoder> videoDecoder;
 
     // 硬件视频解码器（Video 线程；激活时优先于 videoDecoder）
-    HardwareDecoder* hwDecoder = nullptr;
+    std::unique_ptr<HardwareDecoder> hwDecoder;
 
     // 硬件帧 -> 系统内存的拷贝目标（Video 线程，复用）
-    AVFrame* hwTransferFrame = nullptr;
+    AVFramePtr hwTransferFrame;
 
     // 音频解码器（Audio 线程）
-    AudioDecoder* audioDecoder = nullptr;
+    std::unique_ptr<AudioDecoder> audioDecoder;
 
     // 音频重采样器（Audio 线程）
-    AudioResampler* audioResampler = nullptr;
+    std::unique_ptr<AudioResampler> audioResampler;
 
     // 变速不变调（Audio 线程使用，SetSpeed 跨线程）
-    SpeedController* speedController = nullptr;
+    std::unique_ptr<SpeedController> speedController;
 
     // SDL 音频设备（回调线程 + Audio 线程）
-    AudioDevice* audioDevice = nullptr;
+    std::unique_ptr<AudioDevice> audioDevice;
 
     // 音视频同步控制器（渲染线程）
-    SyncController* syncController = nullptr;
+    std::unique_ptr<SyncController> syncController;
 
     // Seek 控制器（Demux 线程执行 / 各线程检测代数）
-    SeekController* seekController = nullptr;
+    std::unique_ptr<SeekController> seekController;
 
     // 截图管理器（渲染线程）
-    ScreenshotManager* screenshotManager = nullptr;
+    std::unique_ptr<ScreenshotManager> screenshotManager;
 
     // 播放信息统计
-    PlayerStatistics* statistics = nullptr;
+    std::unique_ptr<PlayerStatistics> statistics;
 
     // 网络流统计（7.2：FPS / 码率 / 丢包 / 延迟）
-    NetworkStatistics* networkStatistics = nullptr;
+    std::unique_ptr<NetworkStatistics> networkStatistics;
 
     // 网络缓冲控制（7.3：缓冲水位）
-    BufferController* bufferController = nullptr;
+    std::unique_ptr<BufferController> bufferController;
 
     // 流媒体监控（7.9：网络流健康巡检）
-    StreamMonitor* streamMonitor = nullptr;
+    std::unique_ptr<StreamMonitor> streamMonitor;
 
     // 硬件加速上下文（7.7：CUDA/D3D11VA/DXVA2 探测）
-    CUDAContext* cudaContext = nullptr;
+    std::unique_ptr<CUDAContext> cudaContext;
 
     // 硬件加速是否可用（仅探测，解码接入在后续阶段）
     bool hardwareReady = false;
 
     // 配置管理器（7.11）
-    ConfigManager* configManager = nullptr;
+    std::unique_ptr<ConfigManager> configManager;
 
     // ---------- 成员：输出链（7.4–7.6） ----------
 
     std::mutex outMutex;             // 保护输出链生命周期（主线程 vs 解码线程）
 
-    VideoEncoder* outVideoEncoder = nullptr;   // 共享视频编码器
+    std::unique_ptr<VideoEncoder> outVideoEncoder;   // 共享视频编码器
 
-    AudioEncoder* outAudioEncoder = nullptr;   // 共享音频编码器
+    std::unique_ptr<AudioEncoder> outAudioEncoder;   // 共享音频编码器
 
-    FLVMuxer* recordMuxer = nullptr;           // 录制（.flv 文件）
+    std::unique_ptr<FLVMuxer> recordMuxer;           // 录制（.flv 文件）
 
-    RTMPPublisher* rtmpPublisher = nullptr;    // 推流（rtmp://）
+    std::unique_ptr<RTMPPublisher> rtmpPublisher;    // 推流（rtmp://）
 
-    HLSMuxer* hlsMuxer = nullptr;              // HLS 切片
+    std::unique_ptr<HLSMuxer> hlsMuxer;              // HLS 切片
 
-    SwsContext* outSws = nullptr;              // 视频帧 -> YUV420P
+    SwsContextPtr outSws;                            // 视频帧 -> YUV420P
 
-    AVFrame* outYuvFrame = nullptr;            // 转换输出帧（内部复用）
+    AVFramePtr outYuvFrame;                          // 转换输出帧（内部复用）
 
     int64_t outVideoPts = 0;                   // 输出视频 pts（自管理）
 
@@ -487,10 +489,10 @@ private:
     bool hlsActive = false;                    // HLS 输出中
 
     // 字幕管理器
-    SubtitleManager* subtitleManager = nullptr;
+    std::unique_ptr<SubtitleManager> subtitleManager;
 
     // 播放列表管理器
-    PlaylistManager* playlistManager = nullptr;
+    std::unique_ptr<PlaylistManager> playlistManager;
 
     // 播放列表切换请求（渲染线程置位，Run 消费）
     bool switchRequested = false;
@@ -529,7 +531,7 @@ private:
 
     SDL_Texture* rgbTexture = nullptr;     // RGB24 纹理
 
-    SwsContext* swsCtx = nullptr;          // YUV -> RGB 转换
+    SwsContextPtr swsCtx;                    // YUV -> RGB 转换
 
     // 转换器当前源格式（格式变化时重建 swsCtx）
     AVPixelFormat swsSrcFmt = AV_PIX_FMT_NONE;
@@ -542,15 +544,15 @@ private:
 
     int64_t eofWaitStartMs = -1;           // EOF 等待起始（自动退出计时）
 
-    uint8_t* rgbData = nullptr;            // RGB 缓冲
+    std::unique_ptr<uint8_t[]> rgbData;      // RGB 缓冲
 
     int rgbLinesize = 0;                   // RGB 每行字节数
 
     // ---------- 成员：OSD ----------
 
-    FontManager* fontManager = nullptr;
+    std::unique_ptr<FontManager> fontManager;
 
-    OSDManager* osdManager = nullptr;
+    std::unique_ptr<OSDManager> osdManager;
 
     // ---------- 成员：播放状态 ----------
 
@@ -599,7 +601,7 @@ private:
     bool autoAdvancing = false;
 
     // 上一帧副本（供截图 / EOF 显示）
-    AVFrame* lastFrame = nullptr;
+    AVFramePtr lastFrame;
 
     // 视频帧时长（无音频时按它匀速播放）
     double videoFrameDuration = 1.0 / 25.0;

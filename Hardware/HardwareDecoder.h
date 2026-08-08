@@ -19,11 +19,14 @@
 //                      （编码器复用 GetHardwareFramesRef()）
 //
 // 线程归属：解码线程独占（与 VideoDecoder 一致）。
+//
+// 8.1：内部资源 RAII（AVCodecContextPtr / AVFramePtr / AVBufferRefPtr）
 // ============================================================
 
 #include <string>
 
 #include "Hardware/CUDAContext.h"
+#include "Utils/FFmpegPtr.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -86,13 +89,13 @@ private:
         AVCodecContext* ctx,
         const enum AVPixelFormat* pixFmts);
 
-    AVCodecContext* codecCtx = nullptr;   // 解码上下文
+    AVCodecContextPtr codecCtx;   // 解码上下文（RAII）
 
-    AVFrame* frame = nullptr;             // 解码帧（复用）
+    AVFramePtr frame;             // 解码帧（复用，RAII）
 
     CUDAContext* cuda = nullptr;          // 硬件上下文（借用）
 
-    AVBufferRef* framesRef = nullptr;     // hw_frames_ctx
+    AVBufferRefPtr framesRef;     // hw_frames_ctx（RAII）
 
     AVPixelFormat hwPixFmt = AV_PIX_FMT_NONE;   // 硬件像素格式
 

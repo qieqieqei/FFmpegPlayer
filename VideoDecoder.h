@@ -1,7 +1,7 @@
 #pragma once
 
 // ============================================================
-// VideoDecoder - 视频解码器（6.2）
+// VideoDecoder - 视频解码器（6.2 / 8.1 RAII）
 //
 // 职责：只负责
 //
@@ -21,7 +21,11 @@
 // 配合 FrameQueue 使用：
 //   解码线程 ReceiveFrame() 后 av_frame_clone 一帧推入队列，
 //   渲染线程从队列取帧，两者互不干扰
+//
+// 8.1：内部资源全部 RAII（FFmpegPtr），无需手动 Close 也不会泄漏
 // ============================================================
+
+#include "Utils/FFmpegPtr.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -51,7 +55,7 @@ public:
     // 清空解码器内部缓冲（Seek 后调用，否则解出旧数据）
     void Flush();
 
-    // 释放解码器
+    // 释放解码器（RAII 下通常无需手动；保留兼容）
     void Close();
 
     AVCodecContext* GetContext() const;
@@ -62,7 +66,7 @@ public:
 
 private:
 
-    AVCodecContext* codecCtx = nullptr;   // 视频解码上下文
+    AVCodecContextPtr codecCtx;   // 视频解码上下文（RAII）
 
-    AVFrame* frame = nullptr;             // 解码帧（复用）
+    AVFramePtr frame;             // 解码帧（复用，RAII）
 };

@@ -24,12 +24,12 @@ bool Demuxer::Open(
 {
     // ---------- 按 URL 协议创建输入源（7.1） ----------
 
-    source =
+    source.reset(
         InputSource::Create(
             url,
             networkConfigApplied ?
             &networkConfig :
-            nullptr);
+            nullptr));
 
     if (!source)
     {
@@ -48,9 +48,7 @@ bool Demuxer::Open(
             "Open input source failed : " +
             url);
 
-        delete source;
-
-        source = nullptr;
+        source.reset();
 
         return false;
     }
@@ -65,9 +63,7 @@ bool Demuxer::Open(
             "No format context : " +
             url);
 
-        delete source;
-
-        source = nullptr;
+        source.reset();
 
         return false;
     }
@@ -260,14 +256,8 @@ bool Demuxer::Seek(
 
 void Demuxer::Close()
 {
-    if (source)
-    {
-        source->Close();
-
-        delete source;
-
-        source = nullptr;
-    }
+    // RAII：unique_ptr 自动释放 InputSource
+    source.reset();
 }
 
 void Demuxer::SetAbort(

@@ -67,7 +67,7 @@ bool Player::LoadConfig()
     if (!configManager)
     {
         configManager =
-            new ConfigManager();
+            std::make_unique<ConfigManager>();
     }
 
     if (!configManager->Load("."))
@@ -111,7 +111,7 @@ bool Player::LoadConfig()
 
 ConfigManager* Player::GetConfigManager() const
 {
-    return configManager;
+    return configManager.get();
 }
 
 // ============================================================
@@ -127,7 +127,7 @@ bool Player::Init(
 
     // 字体管理器
     fontManager =
-        new FontManager();
+        std::make_unique<FontManager>();
 
     if (!fontManager->Init(
         "Font/simhei.ttf",
@@ -142,10 +142,10 @@ bool Player::Init(
 
     // OSD 管理器
     osdManager =
-        new OSDManager();
+        std::make_unique<OSDManager>();
 
     if (!osdManager->Init(
-        fontManager))
+        fontManager.get()))
     {
         ErrorHandler::Log(
             ErrorTag::Player,
@@ -156,52 +156,52 @@ bool Player::Init(
 
     // 同步控制器
     syncController =
-        new SyncController();
+        std::make_unique<SyncController>();
 
     // 截图管理器
     screenshotManager =
-        new ScreenshotManager();
+        std::make_unique<ScreenshotManager>();
 
     // Seek 控制器
     seekController =
-        new SeekController();
+        std::make_unique<SeekController>();
 
     // 网络流统计（7.2）
     networkStatistics =
-        new NetworkStatistics();
+        std::make_unique<NetworkStatistics>();
 
     // 网络缓冲控制（7.3）
     bufferController =
-        new BufferController();
+        std::make_unique<BufferController>();
 
     // 流媒体监控（7.9）：网络流健康巡检 + 告警
     streamMonitor =
-        new StreamMonitor();
+        std::make_unique<StreamMonitor>();
 
     if (configManager)
     {
         streamMonitor->Init(
-            networkStatistics,
+            networkStatistics.get(),
             configManager->GetStreamConfig());
     }
 
     // 硬件加速探测（7.7）：CUDA -> D3D11VA -> DXVA2，
     // 失败不影响播放（解码仍走软解）
     cudaContext =
-        new CUDAContext();
+        std::make_unique<CUDAContext>();
 
     hardwareReady =
         cudaContext->Init();
 
     // 字幕管理器
     subtitleManager =
-        new SubtitleManager();
+        std::make_unique<SubtitleManager>();
 
     // 播放列表管理器（可能已被 AddToPlaylist 提前创建）
     if (!playlistManager)
     {
         playlistManager =
-            new PlaylistManager();
+            std::make_unique<PlaylistManager>();
     }
 
     // ---------- 打开媒体 ----------
@@ -235,7 +235,7 @@ bool Player::OpenMedia(
     // ---------- 解复用器 ----------
 
     demuxer =
-        new Demuxer();
+        std::make_unique<Demuxer>();
 
     // 网络参数（rtsp_transport / 超时 / 低延迟，来自 stream.json）
     if (configManager)
@@ -345,7 +345,7 @@ bool Player::OpenMedia(
         vStream->codecpar);
 
     videoDecoder =
-        new VideoDecoder();
+        std::make_unique<VideoDecoder>();
 
     if (!videoDecoder->Init(
         vStream->codecpar))
@@ -363,7 +363,7 @@ bool Player::OpenMedia(
     // ---------- 播放统计（5.7） ----------
 
     statistics =
-        new PlayerStatistics();
+        std::make_unique<PlayerStatistics>();
 
     statistics->Init(
         demuxer->GetFormatContext(),
@@ -399,8 +399,8 @@ bool Player::OpenMedia(
         vCtx->width * 3;
 
     rgbData =
-        new uint8_t[
-            rgbLinesize * vCtx->height];
+        std::make_unique<uint8_t[]>(
+            rgbLinesize * vCtx->height);
 
     // ---------- SDL 窗口 / 渲染器 ----------
 
@@ -448,7 +448,7 @@ bool Player::OpenMedia(
     {
         // 音频解码器
         audioDecoder =
-            new AudioDecoder();
+            std::make_unique<AudioDecoder>();
 
         if (!audioDecoder->Init(
             demuxer->GetAudioStream()->codecpar))
@@ -457,9 +457,7 @@ bool Player::OpenMedia(
                 ErrorTag::Audio,
                 "AudioDecoder init failed, video only");
 
-            delete audioDecoder;
-
-            audioDecoder = nullptr;
+            audioDecoder.reset();
 
             hasAudioStream = false;
         }
@@ -469,7 +467,7 @@ bool Player::OpenMedia(
     {
         // SDL 音频设备（与重采样器输出一致：48000Hz / 双声道 / S16）
         audioDevice =
-            new AudioDevice();
+            std::make_unique<AudioDevice>();
 
         if (!audioDevice->Init(
             48000,
@@ -479,9 +477,7 @@ bool Player::OpenMedia(
                 ErrorTag::Audio,
                 "AudioDevice init failed, video only");
 
-            delete audioDevice;
-
-            audioDevice = nullptr;
+            audioDevice.reset();
 
             hasAudioStream = false;
         }
@@ -491,11 +487,11 @@ bool Player::OpenMedia(
     {
         // 重采样器
         audioResampler =
-            new AudioResampler();
+            std::make_unique<AudioResampler>();
 
         // 变速不变调（SOLA），组合包装类
         speedController =
-            new SpeedController();
+            std::make_unique<SpeedController>();
 
         speedController->Init(
             48000,
@@ -516,11 +512,18 @@ bool Player::OpenMedia(
             << std::endl;
     }
 
+    // 8.1：同步控制器绑定音频主时钟（无音频时解绑，
+    // MasterClock 自动回退视频时钟）
+    syncController->SetAudioClock(
+        audioDevice ?
+        audioDevice->GetClock() :
+        nullptr);
+
     // ---------- Seek 控制器绑定 ----------
     // 队列是成员对象（地址不变）；demuxer 每次重建需重新绑定
 
     seekController->Attach(
-        demuxer,
+        demuxer.get(),
         &videoPacketQueue,
         &audioPacketQueue,
         &videoFrameQueue);
@@ -834,19 +837,21 @@ bool Player::Run()
         bool isStep =
             state == PlayerState::Paused;
 
+        // 8.1：推进视频时钟（无音频时作为主时钟基准）
+        syncController->UpdateVideoClock(pts);
+
         if (HasAudio() &&
             !isStep)
         {
-            // 音频主时钟：delay = 视频pts - 音频时钟
+            // MasterClock 自动选择主时钟（音频优先）
             double delay =
-                syncController->GetVideoDelay(
-                    pts,
-                    audioDevice->GetAudioClock());
+                syncController->GetVideoDelay(pts);
 
-            if (delay <
-                -syncController->GetDropThreshold())
+            if (syncController->ShouldDrop(delay))
             {
-                // 视频落后太多：丢帧追赶
+                // 视频落后：丢帧追赶（DropController 防抖）
+                syncController->OnFrameDropped();
+
                 statistics->OnFrameDropped();
 
                 av_frame_free(&frame);
@@ -931,14 +936,9 @@ bool Player::Run()
             << " s"
             << std::endl;
 
-        // 保存副本供截图
-        if (lastFrame)
-        {
-            av_frame_free(&lastFrame);
-        }
-
-        lastFrame =
-            av_frame_clone(frame);
+        // 保存副本供截图（AVFramePtr 自动释放旧帧）
+        lastFrame.reset(
+            av_frame_clone(frame));
 
         av_frame_free(&frame);
 
@@ -993,93 +993,33 @@ void Player::Close()
     // 释放媒体资源（窗口 / 解码器 / 音频链 / 队列）
     ReleaseMedia();
 
-    // ---------- 常驻对象 ----------
+    // ---------- 常驻对象（unique_ptr 自动释放） ----------
 
-    if (osdManager)
-    {
-        delete osdManager;
+    osdManager.reset();
 
-        osdManager = nullptr;
-    }
+    fontManager.reset();
 
-    if (fontManager)
-    {
-        delete fontManager;
+    syncController.reset();
 
-        fontManager = nullptr;
-    }
+    screenshotManager.reset();
 
-    if (syncController)
-    {
-        delete syncController;
+    seekController.reset();
 
-        syncController = nullptr;
-    }
+    networkStatistics.reset();
 
-    if (screenshotManager)
-    {
-        delete screenshotManager;
+    bufferController.reset();
 
-        screenshotManager = nullptr;
-    }
+    streamMonitor.reset();
 
-    if (seekController)
-    {
-        delete seekController;
-
-        seekController = nullptr;
-    }
-
-    if (networkStatistics)
-    {
-        delete networkStatistics;
-
-        networkStatistics = nullptr;
-    }
-
-    if (bufferController)
-    {
-        delete bufferController;
-
-        bufferController = nullptr;
-    }
-
-    if (streamMonitor)
-    {
-        delete streamMonitor;
-
-        streamMonitor = nullptr;
-    }
-
-    if (cudaContext)
-    {
-        delete cudaContext;
-
-        cudaContext = nullptr;
-    }
+    cudaContext.reset();
 
     hardwareReady = false;
 
-    if (configManager)
-    {
-        delete configManager;
+    configManager.reset();
 
-        configManager = nullptr;
-    }
+    subtitleManager.reset();
 
-    if (subtitleManager)
-    {
-        delete subtitleManager;
-
-        subtitleManager = nullptr;
-    }
-
-    if (playlistManager)
-    {
-        delete playlistManager;
-
-        playlistManager = nullptr;
-    }
+    playlistManager.reset();
 
     SDL_Quit();
 
@@ -1100,7 +1040,7 @@ void Player::AddToPlaylist(
     if (!playlistManager)
     {
         playlistManager =
-            new PlaylistManager();
+            std::make_unique<PlaylistManager>();
     }
 
     playlistManager->AddMedia(path);
@@ -1408,7 +1348,7 @@ void Player::TakeScreenshot(
     }
 
     screenshotManager->SaveFrame(
-        lastFrame,
+        lastFrame.get(),
         format);
 }
 
@@ -1627,18 +1567,11 @@ SwsContext* Player::GetSwsForFrame(
         swsSrcW == frame->width &&
         swsSrcH == frame->height)
     {
-        return swsCtx;
+        return swsCtx.get();
     }
 
     // 变了（软解 YUV420P <-> 硬解 NV12，或新媒体）：重建
-    if (swsCtx)
-    {
-        sws_freeContext(swsCtx);
-
-        swsCtx = nullptr;
-    }
-
-    swsCtx =
+    swsCtx.reset(
         sws_getContext(
             frame->width,
             frame->height,
@@ -1649,7 +1582,7 @@ SwsContext* Player::GetSwsForFrame(
             SWS_BILINEAR,
             nullptr,
             nullptr,
-            nullptr);
+            nullptr));
 
     if (swsCtx)
     {
@@ -1660,12 +1593,11 @@ SwsContext* Player::GetSwsForFrame(
         swsSrcH = frame->height;
     }
 
-    return swsCtx;
-}
+    return swsCtx.get();}
 
 uint8_t* Player::GetRGBData() const
 {
-    return rgbData;
+    return rgbData.get();
 }
 
 int Player::GetRGBLinesize() const
@@ -1680,17 +1612,17 @@ SDL_Texture* Player::GetRGBTexture() const
 
 FontManager* Player::GetFontManager() const
 {
-    return fontManager;
+    return fontManager.get();
 }
 
 OSDManager* Player::GetOSDManager() const
 {
-    return osdManager;
+    return osdManager.get();
 }
 
 PlayerStatistics* Player::GetStatistics() const
 {
-    return statistics;
+    return statistics.get();
 }
 
 void Player::UpdateStatistics()
@@ -1919,7 +1851,7 @@ bool Player::EnsureOutEncoders()
         }
 
         outVideoEncoder =
-            new VideoEncoder();
+            std::make_unique<VideoEncoder>();
 
         if (!outVideoEncoder->Init(
             vc->width,
@@ -1934,9 +1866,7 @@ bool Player::EnsureOutEncoders()
                 "VideoEncoder init failed : " +
                 cfg.videoCodec);
 
-            delete outVideoEncoder;
-
-            outVideoEncoder = nullptr;
+            outVideoEncoder.reset();
 
             return false;
         }
@@ -1970,7 +1900,7 @@ bool Player::EnsureOutEncoders()
             2;
 
         outAudioEncoder =
-            new AudioEncoder();
+            std::make_unique<AudioEncoder>();
 
         if (!outAudioEncoder->Init(
             sr,
@@ -1983,9 +1913,7 @@ bool Player::EnsureOutEncoders()
                 << "video-only output"
                 << std::endl;
 
-            delete outAudioEncoder;
-
-            outAudioEncoder = nullptr;
+            outAudioEncoder.reset();
         }
         else
         {
@@ -2017,7 +1945,7 @@ AVFrame* Player::ToYuv420p(
     // 惰性创建转换器
     if (!outSws)
     {
-        outSws =
+        outSws.reset(
             sws_getContext(
                 frame->width,
                 frame->height,
@@ -2029,15 +1957,15 @@ AVFrame* Player::ToYuv420p(
                 SWS_BILINEAR,
                 nullptr,
                 nullptr,
-                nullptr);
+                nullptr));
 
         if (!outSws)
         {
             return nullptr;
         }
 
-        outYuvFrame =
-            av_frame_alloc();
+        outYuvFrame.reset(
+            av_frame_alloc());
 
         if (!outYuvFrame)
         {
@@ -2054,14 +1982,14 @@ AVFrame* Player::ToYuv420p(
             frame->height;
 
         if (av_frame_get_buffer(
-            outYuvFrame, 32) < 0)
+            outYuvFrame.get(), 32) < 0)
         {
             return nullptr;
         }
     }
 
     sws_scale(
-        outSws,
+        outSws.get(),
         frame->data,
         frame->linesize,
         0,
@@ -2069,7 +1997,7 @@ AVFrame* Player::ToYuv420p(
         outYuvFrame->data,
         outYuvFrame->linesize);
 
-    return outYuvFrame;
+    return outYuvFrame.get();
 }
 
 void Player::FeedOutputVideo(
@@ -2347,18 +2275,14 @@ void Player::StopAllOutputs()
 
         recordMuxer->Close();
 
-        delete recordMuxer;
-
-        recordMuxer = nullptr;
+        recordMuxer.reset();
     }
 
     if (rtmpPublisher)
     {
         rtmpPublisher->Stop();
 
-        delete rtmpPublisher;
-
-        rtmpPublisher = nullptr;
+        rtmpPublisher.reset();
     }
 
     if (hlsMuxer)
@@ -2367,9 +2291,7 @@ void Player::StopAllOutputs()
 
         hlsMuxer->Close();
 
-        delete hlsMuxer;
-
-        hlsMuxer = nullptr;
+        hlsMuxer.reset();
     }
 
     recording = false;
@@ -2390,34 +2312,20 @@ void Player::ReleaseOutEncoders()
     if (outVideoEncoder)
     {
         outVideoEncoder->Close();
-
-        delete outVideoEncoder;
-
-        outVideoEncoder = nullptr;
     }
+
+    outVideoEncoder.reset();
 
     if (outAudioEncoder)
     {
         outAudioEncoder->Close();
-
-        delete outAudioEncoder;
-
-        outAudioEncoder = nullptr;
     }
 
-    if (outSws)
-    {
-        sws_freeContext(outSws);
+    outAudioEncoder.reset();
 
-        outSws = nullptr;
-    }
+    outSws.reset();
 
-    if (outYuvFrame)
-    {
-        av_frame_free(&outYuvFrame);
-
-        outYuvFrame = nullptr;
-    }
+    outYuvFrame.reset();
 
     outVideoPts = 0;
 
@@ -2447,13 +2355,11 @@ bool Player::StartRecording(
     }
 
     recordMuxer =
-        new FLVMuxer();
+        std::make_unique<FLVMuxer>();
 
     if (!recordMuxer->OpenOutput(path))
     {
-        delete recordMuxer;
-
-        recordMuxer = nullptr;
+        recordMuxer.reset();
 
         return false;
     }
@@ -2489,9 +2395,7 @@ bool Player::StartRecording(
     {
         recordMuxer->Close();
 
-        delete recordMuxer;
-
-        recordMuxer = nullptr;
+        recordMuxer.reset();
 
         return false;
     }
@@ -2528,9 +2432,7 @@ void Player::StopRecording()
 
         recordMuxer->Close();
 
-        delete recordMuxer;
-
-        recordMuxer = nullptr;
+        recordMuxer.reset();
     }
 
     // 没有其他输出在用时释放编码器
@@ -2615,7 +2517,7 @@ bool Player::StartPushing(
     }
 
     rtmpPublisher =
-        new RTMPPublisher();
+        std::make_unique<RTMPPublisher>();
 
     rtmpPublisher->SetConfig(cfg);
 
@@ -2626,9 +2528,7 @@ bool Player::StartPushing(
             "RTMP connect failed : " +
             target);
 
-        delete rtmpPublisher;
-
-        rtmpPublisher = nullptr;
+        rtmpPublisher.reset();
 
         return false;
     }
@@ -2663,9 +2563,7 @@ bool Player::StartPushing(
     {
         rtmpPublisher->Stop();
 
-        delete rtmpPublisher;
-
-        rtmpPublisher = nullptr;
+        rtmpPublisher.reset();
 
         return false;
     }
@@ -2698,11 +2596,9 @@ void Player::StopPushing()
     if (rtmpPublisher)
     {
         rtmpPublisher->Stop();
-
-        delete rtmpPublisher;
-
-        rtmpPublisher = nullptr;
     }
+
+    rtmpPublisher.reset();
 
     if (!recording && !hlsActive)
     {
@@ -2767,7 +2663,7 @@ bool Player::StartHLS(
     path += "index.m3u8";
 
     hlsMuxer =
-        new HLSMuxer();
+        std::make_unique<HLSMuxer>();
 
     hlsMuxer->SetSegmentDuration(
         cfg.hlsSegmentDurationSec > 0 ?
@@ -2796,9 +2692,7 @@ bool Player::StartHLS(
 
     if (!hlsMuxer->OpenOutput(path))
     {
-        delete hlsMuxer;
-
-        hlsMuxer = nullptr;
+        hlsMuxer.reset();
 
         return false;
     }
@@ -2833,9 +2727,7 @@ bool Player::StartHLS(
     {
         hlsMuxer->Close();
 
-        delete hlsMuxer;
-
-        hlsMuxer = nullptr;
+        hlsMuxer.reset();
 
         return false;
     }
@@ -2870,11 +2762,9 @@ void Player::StopHLS()
         hlsMuxer->WriteTrailer();
 
         hlsMuxer->Close();
-
-        delete hlsMuxer;
-
-        hlsMuxer = nullptr;
     }
+
+    hlsMuxer.reset();
 
     if (!recording && !pushing)
     {
@@ -3169,8 +3059,8 @@ AVFrame* Player::ReceiveVideoFrame()
         // 惰性创建拷贝目标帧
         if (!hwTransferFrame)
         {
-            hwTransferFrame =
-                av_frame_alloc();
+            hwTransferFrame.reset(
+                av_frame_alloc());
 
             if (!hwTransferFrame)
             {
@@ -3181,12 +3071,12 @@ AVFrame* Player::ReceiveVideoFrame()
         // GPU 帧 -> 系统内存（NV12；软解模式直接 ref）
         if (!hwDecoder->TransferFrame(
             hwf,
-            hwTransferFrame))
+            hwTransferFrame.get()))
         {
             return nullptr;
         }
 
-        return hwTransferFrame;
+        return hwTransferFrame.get();
     }
 
     return videoDecoder ?
@@ -3255,10 +3145,10 @@ void Player::TryInitHardwareDecoder(
     }
 
     hwDecoder =
-        new HardwareDecoder();
+        std::make_unique<HardwareDecoder>();
 
     if (!hwDecoder->Init(
-        cudaContext,
+        cudaContext.get(),
         codecName,
         codecpar))
     {
@@ -3267,9 +3157,7 @@ void Player::TryInitHardwareDecoder(
             << "failed, use software"
             << std::endl;
 
-        delete hwDecoder;
-
-        hwDecoder = nullptr;
+        hwDecoder.reset();
     }
 }
 
@@ -3663,51 +3551,30 @@ void Player::ReleaseMedia()
     StopAllOutputs();
 
     // 上一帧副本
-    if (lastFrame)
-    {
-        av_frame_free(&lastFrame);
-
-        lastFrame = nullptr;
-    }
+    lastFrame.reset();
 
     // ---------- 音频链路 ----------
+
+    // 8.1：先解绑音频时钟，避免 MasterClock 持有悬空指针
+    if (syncController)
+    {
+        syncController->SetAudioClock(nullptr);
+    }
 
     if (audioDevice)
     {
         audioDevice->Close();
-
-        delete audioDevice;
-
-        audioDevice = nullptr;
     }
 
-    if (speedController)
-    {
-        delete speedController;
+    audioDevice.reset();
 
-        speedController = nullptr;
-    }
+    speedController.reset();
 
-    if (audioResampler)
-    {
-        delete audioResampler;
+    audioResampler.reset();
 
-        audioResampler = nullptr;
-    }
+    audioDecoder.reset();
 
-    if (audioDecoder)
-    {
-        delete audioDecoder;
-
-        audioDecoder = nullptr;
-    }
-
-    if (statistics)
-    {
-        delete statistics;
-
-        statistics = nullptr;
-    }
+    statistics.reset();
 
     // ---------- SDL 资源 ----------
 
@@ -3739,21 +3606,11 @@ void Player::ReleaseMedia()
         window = nullptr;
     }
 
-    if (rgbData)
-    {
-        delete[] rgbData;
+    rgbData.reset();
 
-        rgbData = nullptr;
+    rgbLinesize = 0;
 
-        rgbLinesize = 0;
-    }
-
-    if (swsCtx)
-    {
-        sws_freeContext(swsCtx);
-
-        swsCtx = nullptr;
-    }
+    swsCtx.reset();
 
     swsSrcFmt = AV_PIX_FMT_NONE;
 
@@ -3767,38 +3624,18 @@ void Player::ReleaseMedia()
     {
         osdManager->Close();
 
-        osdManager->Init(fontManager);
+        osdManager->Init(fontManager.get());
     }
 
     // ---------- 解码器 ----------
 
-    if (hwTransferFrame)
-    {
-        av_frame_free(&hwTransferFrame);
+    hwTransferFrame.reset();
 
-        hwTransferFrame = nullptr;
-    }
+    hwDecoder.reset();
 
-    if (hwDecoder)
-    {
-        delete hwDecoder;
+    videoDecoder.reset();
 
-        hwDecoder = nullptr;
-    }
-
-    if (videoDecoder)
-    {
-        delete videoDecoder;
-
-        videoDecoder = nullptr;
-    }
-
-    if (demuxer)
-    {
-        delete demuxer;
-
-        demuxer = nullptr;
-    }
+    demuxer.reset();
 
     // ---------- 队列清空 + 复位 ----------
 

@@ -70,7 +70,7 @@ void InputSource::SetAbort(
 
 AVFormatContext* InputSource::GetFormatContext() const
 {
-    return fmt;
+    return fmt.get();
 }
 
 // ============================================================
@@ -114,8 +114,8 @@ bool InputSource::OpenWithOptions(
     // 必须在 avformat_open_input 之前绑定，
     // 否则网络连接阻塞时无法打断
 
-    fmt =
-        avformat_alloc_context();
+    fmt.reset(
+        avformat_alloc_context());
 
     if (!fmt)
     {
@@ -137,12 +137,18 @@ bool InputSource::OpenWithOptions(
     this->url =
         url;
 
-    // 注意：必须传 &opts（二级指针）。avformat_open_input 会消费/改写
+    // 注意：必须传 &fmt（二级指针）。avformat_open_input 会消费/改写
     // 字典（剩余协议选项写回 *opts），传值则调用方字典失去同步，
     // 之后 av_dict_free 会 double free 崩溃（HTTP HLS 实测 0xC0000005）
+    //
+    // RAII：用裸指针中转，成功后再交给 fmt 托管；
+    // 失败时 avformat_open_input 内部已释放该指针。
+    AVFormatContext* raw =
+        fmt.release();
+
     int ret =
         avformat_open_input(
-            &fmt,
+            &raw,
             url.c_str(),
             nullptr,
             opts);
@@ -158,11 +164,14 @@ bool InputSource::OpenWithOptions(
         return false;
     }
 
+    // 重新托管（avformat_open_input 可能换掉了原指针）
+    fmt.reset(raw);
+
     // ---------- 读取流信息（时长 / 码率 / 流列表） ----------
 
     ret =
         avformat_find_stream_info(
-            fmt,
+            fmt.get(),
             nullptr);
 
     if (ret < 0)

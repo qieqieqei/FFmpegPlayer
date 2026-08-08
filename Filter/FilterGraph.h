@@ -26,6 +26,8 @@
 
 #include <string>
 
+#include "Utils/FFmpegPtr.h"
+
 extern "C" {
 #include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
@@ -95,13 +97,13 @@ private:
     static std::string ToHex(
         uint64_t v);
 
-    AVFilterGraph* graph = nullptr;   // 滤镜图
+    AVFilterGraphPtr graph;        // 滤镜图（RAII，avfilter_graph_free）
 
-    AVFilterContext* srcCtx = nullptr;  // buffer 源
+    AVFilterContext* srcCtx = nullptr;  // buffer 源（属于 graph，借用）
 
-    AVFilterContext* sinkCtx = nullptr; // buffersink 汇
+    AVFilterContext* sinkCtx = nullptr; // buffersink 汇（属于 graph，借用）
 
-    AVFrame* outFrame = nullptr;      // 内部输出帧（复用）
+    AVFramePtr outFrame;          // 内部输出帧（复用，RAII）
 
     bool ready = false;               // 初始化标志
 

@@ -24,12 +24,7 @@ ScreenshotManager::ScreenshotManager()
 
 ScreenshotManager::~ScreenshotManager()
 {
-    if (sws)
-    {
-        sws_freeContext(sws);
-
-        sws = nullptr;
-    }
+    // RAII：sws 自动释放
 }
 
 bool ScreenshotManager::SaveFrame(
@@ -56,7 +51,7 @@ bool ScreenshotManager::SaveFrame(
     // 惰性创建 sws 转换器
     if (!sws)
     {
-        sws =
+        sws.reset(
             sws_getContext(
                 frame->width,
                 frame->height,
@@ -67,7 +62,7 @@ bool ScreenshotManager::SaveFrame(
                 SWS_BILINEAR,
                 nullptr,
                 nullptr,
-                nullptr);
+                nullptr));
 
         if (!sws)
         {
@@ -91,7 +86,7 @@ bool ScreenshotManager::SaveFrame(
     int dstLinesize[1] = { linesize };
 
     sws_scale(
-        sws,
+        sws.get(),
         frame->data,
         frame->linesize,
         0,
@@ -266,7 +261,7 @@ bool ScreenshotManager::EncodeImage(
     if (pixFmt == AV_PIX_FMT_YUVJ420P)
     {
         // YUVJ420P：需要先把 RGB24 转成 YUV
-        SwsContext* yuvSws =
+        SwsContextPtr yuvSws(
             sws_getContext(
                 width,
                 height,
@@ -277,7 +272,7 @@ bool ScreenshotManager::EncodeImage(
                 SWS_BILINEAR,
                 nullptr,
                 nullptr,
-                nullptr);
+                nullptr));
 
         if (!yuvSws)
         {
@@ -295,15 +290,13 @@ bool ScreenshotManager::EncodeImage(
         int srcLinesize[1] = { linesize };
 
         sws_scale(
-            yuvSws,
+            yuvSws.get(),
             src,
             srcLinesize,
             0,
             height,
             frame->data,
             frame->linesize);
-
-        sws_freeContext(yuvSws);
     }
     else
     {

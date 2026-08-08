@@ -20,16 +20,18 @@
 // 注意：
 //   - AAC 编码器要求 FLTP 采样格式，内部自动重采样
 //   - Opus 编码器要求 48000Hz（强制）
+//
+// 8.1：ctx/swr/convFrame 全部 RAII（AVCodecContextPtr/SwrContextPtr/AVFramePtr）
 // ============================================================
 
 #include <string>
+
+#include "Utils/FFmpegPtr.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/samplefmt.h>
 }
-
-struct SwrContext;
 
 class AudioEncoder
 {
@@ -80,11 +82,11 @@ private:
     AVFrame* ConvertFrame(
         AVFrame* frame);
 
-    AVCodecContext* ctx = nullptr;   // 编码器上下文
+    AVCodecContextPtr ctx;       // 编码器上下文（RAII）
 
-    SwrContext* swr = nullptr;       // 重采样器
+    SwrContextPtr swr;           // 重采样器（RAII）
 
-    AVFrame* convFrame = nullptr;    // 转换输出帧（内部复用）
+    AVFramePtr convFrame;        // 转换输出帧（内部复用，RAII）
 
     std::string codecName;           // 编码器名称
 

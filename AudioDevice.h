@@ -68,6 +68,13 @@ public:
     // = 时钟基准 + 已播放输出时间 * 播放速度
     double GetAudioClock() const;
 
+    // 获取音频时钟对象（借用指针，生命周期随本对象）
+    // SyncController 绑定主时钟用（8.1 接入）
+    AudioClock* GetClock()
+    {
+        return &clock;
+    }
+
     // 重置时钟（Seek 时调用）
     // baseSeconds: Seek 目标时间，作为新时钟基准
     void ResetClock(

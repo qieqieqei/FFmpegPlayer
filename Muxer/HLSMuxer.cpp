@@ -22,14 +22,17 @@ bool HLSMuxer::OpenOutput(
 
     this->url = url;
 
+    // 二级指针 API：局部裸指针中转，成功后交给 RAII 管理
+    AVFormatContext* raw = nullptr;
+
     int ret =
         avformat_alloc_output_context2(
-            &fmt,
+            &raw,
             nullptr,
             GetFormatName(),
             url.c_str());
 
-    if (ret < 0 || !fmt)
+    if (ret < 0 || !raw)
     {
         ErrorHandler::LogFFmpeg(
             ErrorTag::Muxer,
@@ -38,6 +41,8 @@ bool HLSMuxer::OpenOutput(
 
         return false;
     }
+
+    fmt.reset(raw);
 
     // ---------- HLS 参数 ----------
 

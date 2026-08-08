@@ -11,7 +11,7 @@ VideoDecoder::VideoDecoder()
 
 VideoDecoder::~VideoDecoder()
 {
-    Close();
+    // RAII：FFmpegPtr 自动释放 codecCtx / frame
 }
 
 bool VideoDecoder::Init(
@@ -37,8 +37,8 @@ bool VideoDecoder::Init(
         return false;
     }
 
-    codecCtx =
-        avcodec_alloc_context3(codec);
+    codecCtx.reset(
+        avcodec_alloc_context3(codec));
 
     if (!codecCtx)
     {
@@ -51,7 +51,7 @@ bool VideoDecoder::Init(
 
     int ret =
         avcodec_parameters_to_context(
-            codecCtx,
+            codecCtx.get(),
             codecpar);
 
     if (ret < 0)
@@ -66,7 +66,7 @@ bool VideoDecoder::Init(
 
     ret =
         avcodec_open2(
-            codecCtx,
+            codecCtx.get(),
             codec,
             nullptr);
 
@@ -91,8 +91,8 @@ bool VideoDecoder::Init(
         << std::endl;
 
     // 解码帧缓冲区
-    frame =
-        av_frame_alloc();
+    frame.reset(
+        av_frame_alloc());
 
     if (!frame)
     {
@@ -116,7 +116,7 @@ bool VideoDecoder::SendPacket(
 
     int ret =
         avcodec_send_packet(
-            codecCtx,
+            codecCtx.get(),
             pkt);
 
     if (ret < 0 &&
@@ -143,8 +143,8 @@ AVFrame* VideoDecoder::ReceiveFrame()
 
     int ret =
         avcodec_receive_frame(
-            codecCtx,
-            frame);
+            codecCtx.get(),
+            frame.get());
 
     if (ret < 0)
     {
@@ -153,7 +153,7 @@ AVFrame* VideoDecoder::ReceiveFrame()
         return nullptr;
     }
 
-    return frame;
+    return frame.get();
 }
 
 void VideoDecoder::Flush()
@@ -161,26 +161,21 @@ void VideoDecoder::Flush()
     if (codecCtx)
     {
         avcodec_flush_buffers(
-            codecCtx);
+            codecCtx.get());
     }
 }
 
 void VideoDecoder::Close()
 {
-    if (frame)
-    {
-        av_frame_free(&frame);
-    }
+    // RAII：reset(nullptr) 立即释放，等价于旧的 Close()
+    codecCtx.reset();
 
-    if (codecCtx)
-    {
-        avcodec_free_context(&codecCtx);
-    }
+    frame.reset();
 }
 
 AVCodecContext* VideoDecoder::GetContext() const
 {
-    return codecCtx;
+    return codecCtx.get();
 }
 
 int VideoDecoder::GetWidth() const

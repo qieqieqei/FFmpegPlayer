@@ -19,6 +19,8 @@
 #include <string>
 #include <mutex>
 
+#include "Utils/FFmpegPtr.h"
+
 extern "C" {
 #include <libavutil/frame.h>
 #include <libswscale/swscale.h>
@@ -85,7 +87,7 @@ private:
 
     std::string outputDir = "screenshots";
 
-    SwsContext* sws = nullptr;      // YUV -> RGB 转换器
+    SwsContextPtr sws;          // YUV -> RGB 转换器（RAII，惰性创建）
 
     std::mutex mutex;               // 串行化截图操作
 

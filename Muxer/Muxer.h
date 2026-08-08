@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+#include "Utils/FFmpegPtr.h"
+
 extern "C" {
 #include <libavformat/avformat.h>
 }
@@ -82,7 +84,7 @@ protected:
     // 派生类提供封装格式名（"flv" / "hls" / 空=按 URL 后缀）
     virtual const char* GetFormatName() const;
 
-    AVFormatContext* fmt = nullptr;   // 输出上下文
+    AVFormatOutContextPtr fmt;  // 输出上下文（RAII，avformat_free_context）
 
     std::string url;                  // 输出 URL
 

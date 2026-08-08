@@ -18,7 +18,7 @@ AudioEncoder::AudioEncoder()
 
 AudioEncoder::~AudioEncoder()
 {
-    Close();
+    // RAII：ctx / swr / convFrame 自动释放
 }
 
 bool AudioEncoder::Init(
@@ -65,8 +65,8 @@ bool AudioEncoder::Init(
 
     // ---------- 分配上下文 ----------
 
-    ctx =
-        avcodec_alloc_context3(codec);
+    ctx.reset(
+        avcodec_alloc_context3(codec));
 
     if (!ctx)
     {
@@ -119,7 +119,7 @@ bool AudioEncoder::Init(
 
     int ret =
         avcodec_open2(
-            ctx,
+            ctx.get(),
             codec,
             nullptr);
 
@@ -130,16 +130,18 @@ bool AudioEncoder::Init(
             "avcodec_open2 (" + codecName + ")",
             ret);
 
-        avcodec_free_context(&ctx);
+        ctx.reset();
 
         return false;
     }
 
     // ---------- 重采样器（S16 -> 编码器格式） ----------
 
+    SwrContext* newSwr = nullptr;
+
     ret =
         swr_alloc_set_opts2(
-            &swr,
+            &newSwr,
             &ctx->ch_layout,
             ctx->sample_fmt,
             ctx->sample_rate,
@@ -149,20 +151,22 @@ bool AudioEncoder::Init(
             0,
             nullptr);
 
-    if (ret < 0 || !swr)
+    if (ret < 0 || !newSwr)
     {
         ErrorHandler::LogFFmpeg(
             ErrorTag::Encoder,
             "swr_alloc_set_opts2",
             ret);
 
-        avcodec_free_context(&ctx);
+        ctx.reset();
 
         return false;
     }
 
+    swr.reset(newSwr);
+
     ret =
-        swr_init(swr);
+        swr_init(swr.get());
 
     if (ret < 0)
     {
@@ -171,16 +175,16 @@ bool AudioEncoder::Init(
             "swr_init",
             ret);
 
-        swr_free(&swr);
+        swr.reset();
 
-        avcodec_free_context(&ctx);
+        ctx.reset();
 
         return false;
     }
 
     // 转换输出帧（内部复用）
-    convFrame =
-        av_frame_alloc();
+    convFrame.reset(
+        av_frame_alloc());
 
     if (!convFrame)
     {
@@ -188,9 +192,9 @@ bool AudioEncoder::Init(
             ErrorTag::Encoder,
             "av_frame_alloc failed");
 
-        swr_free(&swr);
+        swr.reset();
 
-        avcodec_free_context(&ctx);
+        ctx.reset();
 
         return false;
     }
@@ -234,7 +238,7 @@ bool AudioEncoder::Encode(
 
     int ret =
         avcodec_send_frame(
-            ctx,
+            ctx.get(),
             in);
 
     if (ret < 0 &&
@@ -286,7 +290,7 @@ AVPacket* AudioEncoder::GetPacket()
 
     int ret =
         avcodec_receive_packet(
-            ctx,
+            ctx.get(),
             pkt);
 
     if (ret < 0)
@@ -307,30 +311,18 @@ void AudioEncoder::Flush()
     }
 
     avcodec_send_frame(
-        ctx,
+        ctx.get(),
         nullptr);
 }
 
 void AudioEncoder::Close()
 {
-    if (convFrame)
-    {
-        av_frame_free(&convFrame);
+    // RAII：reset(nullptr) 立即释放全部资源
+    convFrame.reset();
 
-        convFrame = nullptr;
-    }
+    swr.reset();
 
-    if (swr)
-    {
-        swr_free(&swr);
-    }
-
-    if (ctx)
-    {
-        avcodec_free_context(&ctx);
-
-        ctx = nullptr;
-    }
+    ctx.reset();
 
     ready = false;
 }
@@ -342,7 +334,7 @@ bool AudioEncoder::IsReady() const
 
 AVCodecContext* AudioEncoder::GetContext() const
 {
-    return ctx;
+    return ctx.get();
 }
 
 const std::string& AudioEncoder::GetCodecName() const
@@ -358,20 +350,24 @@ AVFrame* AudioEncoder::ConvertFrame(
     AVFrame* frame)
 {
     if (!frame ||
-        !frame->data[0])
+        !frame->data[0] ||
+        !swr ||
+        !ctx ||
+        !convFrame)
     {
         return nullptr;
     }
 
     int outSamples =
         swr_get_out_samples(
-            swr,
+            swr.get(),
             frame->nb_samples);
 
     // 释放上一帧的缓冲（av_samples_alloc 每次都会新分配）
     // 注意：av_frame_unref 会把 format/sample_rate 重置为默认，
     // 必须恢复，否则 avcodec_send_frame 报 EINVAL
-    av_frame_unref(convFrame);
+    av_frame_unref(
+        convFrame.get());
 
     convFrame->format =
         ctx->sample_fmt;
@@ -426,7 +422,7 @@ AVFrame* AudioEncoder::ConvertFrame(
 
     int converted =
         swr_convert(
-            swr,
+            swr.get(),
             convFrame->data,
             outSamples,
             inData,
@@ -449,5 +445,5 @@ AVFrame* AudioEncoder::ConvertFrame(
     convFrame->pts =
         frame->pts;
 
-    return convFrame;
+    return convFrame.get();
 }

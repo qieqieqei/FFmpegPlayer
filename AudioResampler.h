@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Utils/FFmpegPtr.h"
+
 extern "C"
 {
 
@@ -19,6 +21,8 @@ extern "C"
 //
 // Seek 后需要 Reset() 清空 swr 内部缓冲，
 // 否则会残留 Seek 前的采样数据
+//
+// 8.1：swrCtx 改为 SwrContextPtr（RAII）
 // ============================================================
 
 class AudioResampler
@@ -52,7 +56,7 @@ public:
 
 private:
 
-    SwrContext* swrCtx = nullptr;          // 重采样上下文
+    SwrContextPtr swrCtx;                 // 重采样上下文（RAII）
 
     int outSampleRate = 48000;             // 输出采样率
 

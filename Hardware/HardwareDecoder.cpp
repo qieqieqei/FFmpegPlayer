@@ -17,7 +17,7 @@ HardwareDecoder::HardwareDecoder()
 
 HardwareDecoder::~HardwareDecoder()
 {
-    Close();
+    // RAII：codecCtx / frame / framesRef 自动释放
 }
 
 bool HardwareDecoder::Init(
@@ -50,8 +50,8 @@ bool HardwareDecoder::Init(
         return false;
     }
 
-    codecCtx =
-        avcodec_alloc_context3(codec);
+    codecCtx.reset(
+        avcodec_alloc_context3(codec));
 
     if (!codecCtx)
     {
@@ -66,7 +66,7 @@ bool HardwareDecoder::Init(
     // 不填的话 h264 硬解报 Invalid data）
     int ret =
         avcodec_parameters_to_context(
-            codecCtx,
+            codecCtx.get(),
             codecpar);
 
     if (ret < 0)
@@ -113,7 +113,7 @@ bool HardwareDecoder::Init(
 
     ret =
         avcodec_open2(
-            codecCtx,
+            codecCtx.get(),
             codec,
             nullptr);
 
@@ -134,7 +134,7 @@ bool HardwareDecoder::Init(
 
         ret =
             avcodec_open2(
-                codecCtx,
+                codecCtx.get(),
                 codec,
                 nullptr);
 
@@ -160,15 +160,16 @@ bool HardwareDecoder::Init(
 
     if (hardware)
     {
-        framesRef =
+        framesRef.reset(
             cuda->CreateFramesRef(
                 width,
-                height);
+                height));
 
         if (framesRef)
         {
             codecCtx->hw_frames_ctx =
-                av_buffer_ref(framesRef);
+                av_buffer_ref(
+                    framesRef.get());
         }
         else
         {
@@ -182,8 +183,8 @@ bool HardwareDecoder::Init(
         }
     }
 
-    frame =
-        av_frame_alloc();
+    frame.reset(
+        av_frame_alloc());
 
     if (!frame)
     {
@@ -220,7 +221,7 @@ bool HardwareDecoder::SendPacket(
 
     int ret =
         avcodec_send_packet(
-            codecCtx,
+            codecCtx.get(),
             pkt);
 
     if (ret < 0 &&
@@ -244,19 +245,20 @@ AVFrame* HardwareDecoder::ReceiveFrame()
         return nullptr;
     }
 
-    av_frame_unref(frame);
+    av_frame_unref(
+        frame.get());
 
     int ret =
         avcodec_receive_frame(
-            codecCtx,
-            frame);
+            codecCtx.get(),
+            frame.get());
 
     if (ret < 0)
     {
         return nullptr;
     }
 
-    return frame;
+    return frame.get();
 }
 
 bool HardwareDecoder::TransferFrame(
@@ -313,25 +315,18 @@ void HardwareDecoder::Flush()
         return;
     }
 
-    avcodec_flush_buffers(codecCtx);
+    avcodec_flush_buffers(
+        codecCtx.get());
 }
 
 void HardwareDecoder::Close()
 {
-    if (framesRef)
-    {
-        av_buffer_unref(&framesRef);
-    }
+    // RAII：reset(nullptr) 立即释放全部资源
+    codecCtx.reset();
 
-    if (frame)
-    {
-        av_frame_free(&frame);
-    }
+    frame.reset();
 
-    if (codecCtx)
-    {
-        avcodec_free_context(&codecCtx);
-    }
+    framesRef.reset();
 
     cuda = nullptr;
 
@@ -347,17 +342,17 @@ bool HardwareDecoder::IsHardware() const
 
 bool HardwareDecoder::IsReady() const
 {
-    return codecCtx != nullptr;
+    return codecCtx.get() != nullptr;
 }
 
 AVCodecContext* HardwareDecoder::GetContext() const
 {
-    return codecCtx;
+    return codecCtx.get();
 }
 
 AVBufferRef* HardwareDecoder::GetHardwareFramesRef() const
 {
-    return framesRef;
+    return framesRef.get();
 }
 
 // ============================================================

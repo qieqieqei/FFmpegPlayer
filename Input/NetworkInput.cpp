@@ -106,10 +106,8 @@ bool NetworkInput::Open(
 
 void NetworkInput::Close()
 {
-    if (fmt)
-    {
-        avformat_close_input(&fmt);
-    }
+    // RAII：AVFormatContextPtr 自动 avformat_close_input
+    fmt.reset();
 }
 
 // ============================================================

@@ -24,9 +24,13 @@
 //     （解码器输出其他格式时需先 sws_scale 转换）
 //   - 硬编（nvenc）输入可来自 GPU 帧（hw_frames_ctx 直通，
 //     见 HardwareDecoder，7.8 阶段实现零拷贝管线）
+//
+// 8.1：ctx 改为 AVCodecContextPtr（RAII）
 // ============================================================
 
 #include <string>
+
+#include "Utils/FFmpegPtr.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -80,7 +84,7 @@ public:
 
 private:
 
-    AVCodecContext* ctx = nullptr;   // 编码器上下文
+    AVCodecContextPtr ctx;       // 编码器上下文（RAII）
 
     std::string codecName;           // 编码器名称
 

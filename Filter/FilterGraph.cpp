@@ -20,7 +20,7 @@ FilterGraph::FilterGraph()
 
 FilterGraph::~FilterGraph()
 {
-    Close();
+    // RAII：graph / outFrame 自动释放
 }
 
 bool FilterGraph::InitVideo(
@@ -41,8 +41,8 @@ bool FilterGraph::InitVideo(
 
     // ---------- 分配滤镜图 ----------
 
-    graph =
-        avfilter_graph_alloc();
+    graph.reset(
+        avfilter_graph_alloc());
 
     if (!graph)
     {
@@ -80,7 +80,7 @@ bool FilterGraph::InitVideo(
             "in",
             args.c_str(),
             nullptr,
-            graph);
+            graph.get());
 
     if (ret < 0)
     {
@@ -103,7 +103,7 @@ bool FilterGraph::InitVideo(
             "out",
             nullptr,
             nullptr,
-            graph);
+            graph.get());
 
     if (ret < 0)
     {
@@ -161,7 +161,7 @@ bool FilterGraph::InitVideo(
 
     ret =
         avfilter_graph_parse_ptr(
-            graph,
+            graph.get(),
             filterDesc.c_str(),
             &inputs,
             &outputs,
@@ -188,7 +188,7 @@ bool FilterGraph::InitVideo(
 
     ret =
         avfilter_graph_config(
-            graph,
+            graph.get(),
             nullptr);
 
     if (ret < 0)
@@ -214,8 +214,8 @@ bool FilterGraph::InitVideo(
         outlink->h;
 
     // 内部输出帧
-    outFrame =
-        av_frame_alloc();
+    outFrame.reset(
+        av_frame_alloc());
 
     if (!outFrame)
     {
@@ -254,8 +254,8 @@ bool FilterGraph::InitAudio(
 
     // ---------- 分配滤镜图 ----------
 
-    graph =
-        avfilter_graph_alloc();
+    graph.reset(
+        avfilter_graph_alloc());
 
     if (!graph)
     {
@@ -283,7 +283,7 @@ bool FilterGraph::InitAudio(
             "in",
             args.c_str(),
             nullptr,
-            graph);
+            graph.get());
 
     if (ret < 0)
     {
@@ -306,7 +306,7 @@ bool FilterGraph::InitAudio(
             "out",
             nullptr,
             nullptr,
-            graph);
+            graph.get());
 
     if (ret < 0)
     {
@@ -361,7 +361,7 @@ bool FilterGraph::InitAudio(
 
     ret =
         avfilter_graph_parse_ptr(
-            graph,
+            graph.get(),
             filterDesc.c_str(),
             &inputs,
             &outputs,
@@ -386,7 +386,7 @@ bool FilterGraph::InitAudio(
 
     ret =
         avfilter_graph_config(
-            graph,
+            graph.get(),
             nullptr);
 
     if (ret < 0)
@@ -401,8 +401,8 @@ bool FilterGraph::InitAudio(
         return false;
     }
 
-    outFrame =
-        av_frame_alloc();
+    outFrame.reset(
+        av_frame_alloc());
 
     if (!outFrame)
     {
@@ -451,12 +451,12 @@ bool FilterGraph::ProcessFrame(
 
     // ---------- 取输出 ----------
 
-    av_frame_unref(outFrame);
+    av_frame_unref(outFrame.get());
 
     int ret =
         av_buffersink_get_frame(
             sinkCtx,
-            outFrame);
+            outFrame.get());
 
     if (ret < 0)
     {
@@ -466,7 +466,7 @@ bool FilterGraph::ProcessFrame(
 
     if (out)
     {
-        *out = outFrame;
+        *out = outFrame.get();
     }
 
     return true;
@@ -485,19 +485,10 @@ void FilterGraph::Flush()
 
 void FilterGraph::Close()
 {
-    if (outFrame)
-    {
-        av_frame_free(&outFrame);
+    // RAII：outFrame / graph 自动释放（graph 连带释放 srcCtx/sinkCtx）
+    outFrame.reset();
 
-        outFrame = nullptr;
-    }
-
-    if (graph)
-    {
-        avfilter_graph_free(&graph);
-
-        graph = nullptr;
-    }
+    graph.reset();
 
     srcCtx = nullptr;
 

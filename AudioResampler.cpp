@@ -11,7 +11,7 @@ AudioResampler::AudioResampler()
 
 AudioResampler::~AudioResampler()
 {
-    Close();
+    // RAII：SwrContextPtr 自动释放
 }
 
 bool AudioResampler::Init(
@@ -39,9 +39,11 @@ bool AudioResampler::Init(
         &outLayout,
         outChannels);                // 设置输出双声道
 
+    SwrContext* newCtx = nullptr;
+
     int ret =
         swr_alloc_set_opts2(
-            &swrCtx,                 // 返回 SwrContext
+            &newCtx,                 // 返回 SwrContext
 
             &outLayout,              // 输出声道布局
 
@@ -69,22 +71,27 @@ bool AudioResampler::Init(
             "swr_alloc_set_opts2",
             ret);
 
-        swrCtx = nullptr;
+        // 失败时可能已分配部分资源，保险释放
+        if (newCtx)
+        {
+            swr_free(&newCtx);
+        }
 
         return false;
     }
 
+    swrCtx.reset(
+        newCtx);
+
     if (
-        swr_init(swrCtx)
+        swr_init(swrCtx.get())
         < 0)
     {
         ErrorHandler::Log(
             ErrorTag::Audio,
             "swr_init failed");
 
-        swr_free(&swrCtx);
-
-        swrCtx = nullptr;
+        swrCtx.reset();
 
         return false;
     }
@@ -127,7 +134,7 @@ int AudioResampler::Convert(
 
     int samples =
         swr_convert(
-            swrCtx,                     // 重采样上下文
+            swrCtx.get(),               // 重采样上下文
 
             outBuffer,                  // 输出PCM
 
@@ -162,7 +169,7 @@ int AudioResampler::GetOutputSampleRate() const
 
 bool AudioResampler::IsReady() const
 {
-    return swrCtx != nullptr;
+    return swrCtx.get() != nullptr;
 }
 
 void AudioResampler::Reset()
@@ -170,19 +177,13 @@ void AudioResampler::Reset()
     if (swrCtx)
     {
         // 清空 swr 内部缓冲（Seek 后调用，保留配置）
-        swr_close(swrCtx);
+        swr_close(swrCtx.get());
 
-        swr_init(swrCtx);
+        swr_init(swrCtx.get());
     }
 }
 
 void AudioResampler::Close()
 {
-    if (swrCtx)
-    {
-        swr_free(
-            &swrCtx);
-
-        swrCtx = nullptr;
-    }
+    swrCtx.reset();
 }

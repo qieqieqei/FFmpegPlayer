@@ -22,9 +22,13 @@
 //   if (!cuda.Init()) { /* 无可用硬件，回退软解 */ }
 //   cuda.GetDeviceContext();        // 给解码器 hw_device_ctx
 //   cuda.CreateFramesRef(w, h);     // 给解码器 hw_frames_ctx
+//
+// 8.1：deviceCtx 改为 AVBufferRefPtr（RAII）
 // ============================================================
 
 #include <string>
+
+#include "Utils/FFmpegPtr.h"
 
 extern "C" {
 #include <libavutil/hwcontext.h>
@@ -73,7 +77,7 @@ public:
 
 private:
 
-    AVBufferRef* deviceCtx = nullptr;   // 硬件设备上下文
+    AVBufferRefPtr deviceCtx;   // 硬件设备上下文（RAII）
 
     AVHWDeviceType type = AV_HWDEVICE_TYPE_NONE;  // 实际类型
 };

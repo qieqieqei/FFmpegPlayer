@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Utils/FFmpegPtr.h"
+
 extern "C"
 {
 
@@ -18,6 +20,8 @@ extern "C"
 //
 // Seek 时需要调用 Flush() 清空解码器内部缓冲，
 // 否则 Seek 后第一帧会解码出 Seek 前的数据
+//
+// 8.1：内部资源 RAII（AVCodecContextPtr / AVFramePtr）
 // ============================================================
 
 class AudioDecoder
@@ -45,8 +49,8 @@ public:
 
 private:
 
-    AVCodecContext* codecCtx = nullptr;   // 音频解码上下文
+    AVCodecContextPtr codecCtx;   // 音频解码上下文（RAII）
 
-    AVFrame* frame = nullptr;             // PCM音频帧
+    AVFramePtr frame;             // PCM音频帧（RAII）
 
 };

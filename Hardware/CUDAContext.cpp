@@ -46,7 +46,7 @@ bool CUDAContext::Init()
 
         if (ret >= 0 && ref)
         {
-            deviceCtx = ref;
+            deviceCtx.reset(ref);
 
             type = t;
 
@@ -80,17 +80,14 @@ bool CUDAContext::Init()
 
 void CUDAContext::Close()
 {
-    if (deviceCtx)
-    {
-        av_buffer_unref(&deviceCtx);
-    }
+    deviceCtx.reset();
 
     type = AV_HWDEVICE_TYPE_NONE;
 }
 
 bool CUDAContext::IsAvailable() const
 {
-    return deviceCtx != nullptr;
+    return deviceCtx.get() != nullptr;
 }
 
 AVHWDeviceType CUDAContext::GetType() const
@@ -113,7 +110,7 @@ std::string CUDAContext::GetTypeName() const
 
 AVBufferRef* CUDAContext::GetDeviceContext() const
 {
-    return deviceCtx;
+    return deviceCtx.get();
 }
 
 AVBufferRef* CUDAContext::CreateFramesRef(
@@ -127,7 +124,8 @@ AVBufferRef* CUDAContext::CreateFramesRef(
     }
 
     AVBufferRef* framesRef =
-        av_hwframe_ctx_alloc(deviceCtx);
+        av_hwframe_ctx_alloc(
+            deviceCtx.get());
 
     if (!framesRef)
     {

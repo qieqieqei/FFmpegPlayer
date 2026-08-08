@@ -11,7 +11,7 @@ AudioDecoder::AudioDecoder()
 
 AudioDecoder::~AudioDecoder()
 {
-    Close();
+    // RAII：AVCodecContextPtr / AVFramePtr 自动释放
 }
 
 bool AudioDecoder::Init(
@@ -36,9 +36,9 @@ bool AudioDecoder::Init(
         return false;
     }
 
-    codecCtx =
+    codecCtx.reset(
         avcodec_alloc_context3(
-            decoder);
+            decoder));
 
     if (!codecCtx)
     {
@@ -50,7 +50,7 @@ bool AudioDecoder::Init(
     }
 
     if (avcodec_parameters_to_context(
-        codecCtx,
+        codecCtx.get(),
         codecpar)
         < 0)
     {
@@ -62,7 +62,7 @@ bool AudioDecoder::Init(
     }
 
     if (avcodec_open2(
-        codecCtx,
+        codecCtx.get(),
         decoder,
         nullptr)
         < 0)
@@ -74,8 +74,8 @@ bool AudioDecoder::Init(
         return false;
     }
 
-    frame =
-        av_frame_alloc();
+    frame.reset(
+        av_frame_alloc());
 
     if (!frame)
     {
@@ -109,7 +109,7 @@ bool AudioDecoder::SendPacket(
 
     int ret =
         avcodec_send_packet(
-            codecCtx,
+            codecCtx.get(),
             packet);
 
     if (ret < 0)
@@ -125,22 +125,23 @@ bool AudioDecoder::SendPacket(
 
 AVFrame* AudioDecoder::ReceiveFrame()
 {
-    if (!codecCtx)
+    if (!codecCtx ||
+        !frame)
     {
         return nullptr;
     }
 
     int ret =
         avcodec_receive_frame(
-            codecCtx,
-            frame);
+            codecCtx.get(),
+            frame.get());
 
     if (ret < 0)
     {
         return nullptr;
     }
 
-    return frame;
+    return frame.get();
 }
 
 void AudioDecoder::Flush()
@@ -148,21 +149,14 @@ void AudioDecoder::Flush()
     if (codecCtx)
     {
         // 清空解码器内部缓冲（Seek 后调用）
-        avcodec_flush_buffers(codecCtx);
+        avcodec_flush_buffers(codecCtx.get());
     }
 }
 
 void AudioDecoder::Close()
 {
-    if (frame)
-    {
-        av_frame_free(
-            &frame);
-    }
+    // RAII：reset(nullptr) 立即释放
+    codecCtx.reset();
 
-    if (codecCtx)
-    {
-        avcodec_free_context(
-            &codecCtx);
-    }
+    frame.reset();
 }

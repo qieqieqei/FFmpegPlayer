@@ -20,7 +20,7 @@ VideoEncoder::VideoEncoder()
 
 VideoEncoder::~VideoEncoder()
 {
-    Close();
+    // RAII：ctx 自动释放
 }
 
 bool VideoEncoder::Init(
@@ -66,8 +66,8 @@ bool VideoEncoder::Init(
 
     // ---------- 分配上下文 ----------
 
-    ctx =
-        avcodec_alloc_context3(codec);
+    ctx.reset(
+        avcodec_alloc_context3(codec));
 
     if (!ctx)
     {
@@ -139,7 +139,7 @@ bool VideoEncoder::Init(
 
     int ret =
         avcodec_open2(
-            ctx,
+            ctx.get(),
             codec,
             nullptr);
 
@@ -150,7 +150,7 @@ bool VideoEncoder::Init(
             "avcodec_open2 (" + codecName + ")",
             ret);
 
-        avcodec_free_context(&ctx);
+        ctx.reset();
 
         return false;
     }
@@ -178,7 +178,7 @@ bool VideoEncoder::Encode(
 
     int ret =
         avcodec_send_frame(
-            ctx,
+            ctx.get(),
             frame);
 
     if (ret < 0 &&
@@ -212,7 +212,7 @@ AVPacket* VideoEncoder::GetPacket()
 
     int ret =
         avcodec_receive_packet(
-            ctx,
+            ctx.get(),
             pkt);
 
     if (ret < 0)
@@ -235,18 +235,14 @@ void VideoEncoder::Flush()
 
     // 送空帧触发冲刷
     avcodec_send_frame(
-        ctx,
+        ctx.get(),
         nullptr);
 }
 
 void VideoEncoder::Close()
 {
-    if (ctx)
-    {
-        avcodec_free_context(&ctx);
-
-        ctx = nullptr;
-    }
+    // RAII：reset(nullptr) 立即释放
+    ctx.reset();
 
     ready = false;
 }
@@ -258,7 +254,7 @@ bool VideoEncoder::IsReady() const
 
 AVCodecContext* VideoEncoder::GetContext() const
 {
-    return ctx;
+    return ctx.get();
 }
 
 const std::string& VideoEncoder::GetCodecName() const

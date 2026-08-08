@@ -9,7 +9,9 @@ void AudioClock::Reset(
 {
     std::lock_guard<std::mutex> lock(mutex);
 
-    baseSeconds = baseSeconds;
+    // 参数与成员同名，必须 this-> 否则自赋值不生效
+    // （曾导致 Seek 后时钟基准不更新）
+    this->baseSeconds = baseSeconds;
 
     playedSeconds = 0.0;
 }

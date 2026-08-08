@@ -18,14 +18,17 @@ bool FLVMuxer::OpenOutput(
 
     this->url = url;
 
+    // 二级指针 API：局部裸指针中转，成功后交给 RAII 管理
+    AVFormatContext* raw = nullptr;
+
     int ret =
         avformat_alloc_output_context2(
-            &fmt,
+            &raw,
             nullptr,             // 显式指定 flv（GetFormatName）
             GetFormatName(),
             url.c_str());
 
-    if (ret < 0 || !fmt)
+    if (ret < 0 || !raw)
     {
         ErrorHandler::LogFFmpeg(
             ErrorTag::Muxer,
@@ -34,6 +37,8 @@ bool FLVMuxer::OpenOutput(
 
         return false;
     }
+
+    fmt.reset(raw);
 
     Logger::Info()
         << "[FLVMuxer] Open : "
@@ -54,9 +59,8 @@ bool FLVMuxer::OpenOutput(
             "avio_open (flv)",
             ret);
 
-        avformat_free_context(fmt);
-
-        fmt = nullptr;
+        // RAII：失败时自动释放
+        fmt.reset();
 
         return false;
     }

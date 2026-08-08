@@ -187,7 +187,11 @@
     <ClCompile Include="Subtitle\SubtitleManager.cpp" />
     <ClCompile Include="Sync\AudioClock.cpp" />
     <ClCompile Include="Sync\Clock.cpp" />
+    <ClCompile Include="Sync\DropController.cpp" />
+    <ClCompile Include="Sync\FrameScheduler.cpp" />
+    <ClCompile Include="Sync\MasterClock.cpp" />
     <ClCompile Include="Sync\SyncController.cpp" />
+    <ClCompile Include="Sync\VideoClock.cpp" />
     <ClCompile Include="Utils\ErrorHandler.cpp" />
     <ClCompile Include="Utils\Logger.cpp" />
     <ClCompile Include="VideoDecoder.cpp" />
@@ -238,7 +242,11 @@
     <ClInclude Include="Subtitle\SubtitleManager.h" />
     <ClInclude Include="Sync\AudioClock.h" />
     <ClInclude Include="Sync\Clock.h" />
+    <ClInclude Include="Sync\DropController.h" />
+    <ClInclude Include="Sync\FrameScheduler.h" />
+    <ClInclude Include="Sync\MasterClock.h" />
     <ClInclude Include="Sync\SyncController.h" />
+    <ClInclude Include="Sync\VideoClock.h" />
     <ClInclude Include="Utils\ErrorHandler.h" />
     <ClInclude Include="Utils\FFmpegPtr.h" />
     <ClInclude Include="Utils\Logger.h" />

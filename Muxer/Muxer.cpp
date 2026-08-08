@@ -27,7 +27,7 @@ AVStream* Muxer::AddVideoStream(
 
     AVStream* stream =
         avformat_new_stream(
-            fmt,
+            fmt.get(),
             nullptr);
 
     if (!stream)
@@ -73,7 +73,7 @@ AVStream* Muxer::AddAudioStream(
 
     AVStream* stream =
         avformat_new_stream(
-            fmt,
+            fmt.get(),
             nullptr);
 
     if (!stream)
@@ -123,7 +123,7 @@ bool Muxer::WriteHeader()
 
     int ret =
         avformat_write_header(
-            fmt,
+            fmt.get(),
             nullptr);
 
     if (ret < 0)
@@ -201,7 +201,7 @@ bool Muxer::WritePacket(
 
     int ret =
         av_interleaved_write_frame(
-            fmt,
+            fmt.get(),
             pkt);
 
     if (ret < 0)
@@ -225,7 +225,7 @@ void Muxer::WriteTrailer()
     }
 
     int ret =
-        av_write_trailer(fmt);
+        av_write_trailer(fmt.get());
 
     if (ret < 0)
     {
@@ -246,14 +246,16 @@ void Muxer::Close()
         if (headerWritten &&
             !trailerWritten)
         {
-            av_write_trailer(fmt);
+            av_write_trailer(fmt.get());
         }
 
-        avio_closep(&fmt->pb);
+        if (fmt->pb)
+        {
+            avio_closep(&fmt->pb);
+        }
 
-        avformat_free_context(fmt);
-
-        fmt = nullptr;
+        // RAII：avformat_free_context 自动释放
+        fmt.reset();
     }
 
     headerWritten = false;
@@ -265,12 +267,12 @@ void Muxer::Close()
 
 bool Muxer::IsOpen() const
 {
-    return fmt != nullptr;
+    return static_cast<bool>(fmt);
 }
 
 AVFormatContext* Muxer::GetFormatContext() const
 {
-    return fmt;
+    return fmt.get();
 }
 
 const std::string& Muxer::GetUrl() const
