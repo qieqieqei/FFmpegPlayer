@@ -1641,6 +1641,13 @@ void Player::UpdateStatistics()
         48000,                             // 音频采样率
         2);                                // 音频声道
 
+    // 视频帧缓冲时长（毫秒）：帧数 * 帧间隔
+    statistics->SetVideoBufferMs(
+        static_cast<int>(
+            videoFrameQueue.Size() *
+            videoFrameDuration *
+            1000.0));
+
     // ---------- 网络缓冲监控（7.2 / 7.3） ----------
 
     if (!networkStatistics ||
@@ -3227,6 +3234,12 @@ void Player::VideoDecodeLoop()
                             break;
                         }
 
+                        // 解码统计（EOF 尾帧同样计数）
+                        if (statistics)
+                        {
+                            statistics->OnFrameDecoded();
+                        }
+
                         // 输出链（EOF 尾帧同样送编码）
                         FeedOutputVideo(f);
 
@@ -3321,6 +3334,12 @@ void Player::VideoDecodeLoop()
             {
                 // 需要更多包，或解码结束
                 break;
+            }
+
+            // 解码统计（每解出一帧计数一次）
+            if (statistics)
+            {
+                statistics->OnFrameDecoded();
             }
 
             // 输出链（7.4–7.6）：录制 / 推流 / HLS 共享编码器

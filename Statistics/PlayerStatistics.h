@@ -15,9 +15,10 @@
 // OSD 显示示例：
 //   Resolution : 1280x720
 //   Codec      : H264 / AAC
-//   FPS        : 30.0 (Measured 29.8)
+//   FPS        : 30.0 (Decode 29.9 / Render 29.8)
 //   Bitrate    : 116 kbps
-//   Buffer     : Video 3 frames / Audio 120 ms
+//   Buffer     : Video 3 frames (100 ms) / Audio 120 ms
+//   Dropped    : 5
 // ============================================================
 
 #include <string>
@@ -42,6 +43,9 @@ public:
     // 渲染了一帧（用于实测 FPS）
     void OnFrameRendered();
 
+    // 解码了一帧（用于解码实测 FPS，解码线程调用）
+    void OnFrameDecoded();
+
     // 丢了一帧（用于统计）
     void OnFrameDropped();
 
@@ -58,9 +62,15 @@ public:
     void SetBitrate(
         double bps);
 
+    // 设置视频帧缓冲时长（毫秒，渲染线程估算）
+    void SetVideoBufferMs(
+        int ms);
+
     // ---------- 读取 ----------
 
     double GetFPS() const;
+
+    double GetDecodeFPS() const;
 
     double GetNominalFPS() const;
 
@@ -71,6 +81,8 @@ public:
     int GetAudioPackets() const;
 
     int GetVideoFrames() const;
+
+    int GetVideoBufferMs() const;
 
     int GetAudioBufferMs() const;
 
@@ -91,6 +103,8 @@ private:
 
     void UpdateFPS();
 
+    void UpdateDecodeFPS();
+
     mutable std::mutex mutex;
 
     // 静态信息
@@ -105,6 +119,8 @@ private:
     // 动态信息
     double fps = 0.0;
 
+    double decodeFps = 0.0;
+
     double bitrate = 0.0;
 
     int videoPackets = 0;
@@ -113,12 +129,19 @@ private:
 
     int videoFrames = 0;
 
+    int videoBufferMs = 0;
+
     int audioBufferMs = 0;
 
     int droppedFrames = 0;
 
-    // FPS 测量状态
+    // FPS 测量状态（渲染）
     int frameCount = 0;
 
     double lastFpsTime = 0.0;
+
+    // FPS 测量状态（解码，独立窗口）
+    int decodeFrameCount = 0;
+
+    double decodeLastFpsTime = 0.0;
 };

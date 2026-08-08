@@ -102,7 +102,9 @@ void OSDManager::Update(
             << std::fixed
             << std::setprecision(1)
             << stats->GetNominalFPS()
-            << " (Measured "
+            << " (Decode "
+            << stats->GetDecodeFPS()
+            << " / Render "
             << stats->GetFPS()
             << ")"
             << "\n"
@@ -112,9 +114,17 @@ void OSDManager::Update(
             << "\n"
             << "Buffer : Video "
             << stats->GetVideoFrames()
-            << " frames / Audio "
+            << " frames ("
+            << stats->GetVideoBufferMs()
+            << " ms) / Audio "
             << stats->GetAudioBufferMs()
             << " ms"
+            << "\n"
+            << "Queues : V "
+            << stats->GetVideoPackets()
+            << " / A "
+            << stats->GetAudioPackets()
+            << " packets"
             << "\n"
             << "Dropped : "
             << stats->GetDroppedFrames();

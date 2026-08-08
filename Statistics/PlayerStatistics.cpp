@@ -72,6 +72,9 @@ void PlayerStatistics::Init(
 
     lastFpsTime =
         SDL_GetTicks() / 1000.0;
+
+    decodeLastFpsTime =
+        lastFpsTime;
 }
 
 void PlayerStatistics::OnFrameRendered()
@@ -81,6 +84,15 @@ void PlayerStatistics::OnFrameRendered()
     frameCount++;
 
     UpdateFPS();
+}
+
+void PlayerStatistics::OnFrameDecoded()
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    decodeFrameCount++;
+
+    UpdateDecodeFPS();
 }
 
 void PlayerStatistics::OnFrameDropped()
@@ -134,11 +146,26 @@ void PlayerStatistics::SetBitrate(
     bitrate = bps;
 }
 
+void PlayerStatistics::SetVideoBufferMs(
+    int ms)
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    videoBufferMs = ms;
+}
+
 double PlayerStatistics::GetFPS() const
 {
     std::lock_guard<std::mutex> lock(mutex);
 
     return fps;
+}
+
+double PlayerStatistics::GetDecodeFPS() const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    return decodeFps;
 }
 
 double PlayerStatistics::GetNominalFPS() const
@@ -174,6 +201,13 @@ int PlayerStatistics::GetVideoFrames() const
     std::lock_guard<std::mutex> lock(mutex);
 
     return videoFrames;
+}
+
+int PlayerStatistics::GetVideoBufferMs() const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    return videoBufferMs;
 }
 
 int PlayerStatistics::GetAudioBufferMs() const
@@ -259,5 +293,25 @@ void PlayerStatistics::UpdateFPS()
         frameCount = 0;
 
         lastFpsTime = now;
+    }
+}
+
+void PlayerStatistics::UpdateDecodeFPS()
+{
+    double now =
+        SDL_GetTicks() / 1000.0;
+
+    double elapsed =
+        now - decodeLastFpsTime;
+
+    // 每 0.5 秒刷新一次解码 FPS（独立窗口）
+    if (elapsed >= 0.5)
+    {
+        decodeFps =
+            decodeFrameCount / elapsed;
+
+        decodeFrameCount = 0;
+
+        decodeLastFpsTime = now;
     }
 }
