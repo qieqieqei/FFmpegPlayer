@@ -13,6 +13,8 @@
 - ✅ 中断回调：`SetAbort()` 可打断阻塞中的网络读取（`av_read_frame` 立即返回），退出 / 切换媒体不再卡死
 - ✅ 直播 / 点播自动识别：RTSP/RTMP/时长未知流按直播处理（禁止 Seek、低延迟缓冲）；点播流可 Seek
 - ✅ 网络缓冲 `Network/NetworkBuffer`：满时丢最旧包（直播低延迟策略，区别于本地背压队列），带丢弃计数
+- ✅ **直播路径已接入 Player**：`useNetBuffer = demuxer->IsLive()`——直播流（RTSP/RTMP/推流中 HLS）自动走 NetworkBuffer（满丢最旧、低延迟），点播流走原 PacketQueue（满阻塞背压）；音频 NetBuffer cap = max(30, cap/2)、视频 cap = 600，缓冲目标 `bufferTargetMs = 300`（stream.json 可配）
+- ✅ HTTP HLS 崩溃修复：`OpenWithOptions` 改收 `AVDictionary**`（原按值传参，`avformat_open_input` 消费选项后 `av_dict_free(&opts)` 双重释放崩溃 0xC0000005）；`analyzeduration=1500000`、`probesize=300000` 修复 HLS/TS AAC 采样率未解析问题
 - ✅ 网络统计 `Network/NetworkStatistics`：1s 滑动窗口统计输入/输出 FPS、码率、丢包率、缓冲水位、延迟估算
 - ✅ 缓冲控制 `Network/BufferController`：低/高水位模型（NeedBuffer / IsEnough），直播目标 300ms、点播 2000ms
 - ✅ 配置系统 `Config/`：自研轻量 JSON 解析器，`player.json`（窗口/音量/速度/默认 URL/日志）+ `stream.json`（RTSP/RTMP/编码/缓冲/HLS/滤镜参数，为后续阶段预留），缺失时用默认值不报错
@@ -26,6 +28,7 @@
 - ✅ 硬件解码 `Hardware/`：`CUDAContext`（CUDA → D3D11VA → DXVA2 自动探测降级，已在本机验证 cuda 可用）、`HardwareDecoder`（硬解 + 软解自动回退 + GPU 帧零拷贝，可共享 hw_frames_ctx 给 h264_nvenc）
 - ✅ 流监控 `Network/StreamMonitor`：每秒巡检网络流（延迟 / 丢包率 / 码率 / 缓冲 / FPS），阈值告警（延迟 ≥500ms、丢包 ≥1%、无数据 5s 判定断流），已接入 Player 渲染循环（仅网络流触发）
 - ✅ Player 集成：录制 / 推流 / HLS 开关（编码链接入播放主流程），CLI `--record/--push/--hls` 启动即输出，EOF 后 3 秒自动退出（批处理友好）
+- ✅ 直播低延迟实测：UDP mpegts（`udp://127.0.0.1:12345`）与 HTTP HLS 均验证通过——live 自动识别（`Network stream : http (live)`）、NetworkBuffer cap=600 target=300ms、源停后干净 EOF → 3s 自动退出、FLV 完整 20.000s；仅推流中的 m3u8 走 live 路径（静态 m3u8 按点播处理）
 - ✅ 硬解接入解码主链路：`stream.json` 的 `"hardware_decode": true` 开启（默认开）；Player 优先走 `HardwareDecoder`（NVDEC/D3D11VA/DXVA2），GPU 帧 transfer 回系统内存（NV12）后走原有渲染/输出链路（渲染转换器按实际帧格式惰性创建，自动适配 NV12/YUV420P）；失败自动回退软解。已验证：RTX4060 上 `h264 : cuda 640x360` 激活，录制 20s FLV 正常
 - ⚠ FLV/RTMP 格式限制：仅支持 H.264 + AAC（Opus 不能走 FLV/RTMP 路径）
 
@@ -75,6 +78,9 @@
 FFmpeg_text_claw.exe [文件1] [文件2] ...        # 多文件加入播放列表
 FFmpeg_text_claw.exe -v file.mp4                # DEBUG 级别日志
 FFmpeg_text_claw.exe --log-file player.log file.mp4   # 同时写日志文件
+FFmpeg_text_claw.exe --record file.mp4          # 播放同时录制 FLV（record_*.flv）
+FFmpeg_text_claw.exe --hls file.mp4             # 播放同时输出 HLS（hls_out/）
+FFmpeg_text_claw.exe --push rtmp://host/live/stream file.mp4   # 播放同时 RTMP 推流
 ```
 
 不带参数时播放默认测试视频 `D:\FFmpeg\ffmpeg\test_audio.mp4`（代码内 kDefaultVideo 常量，可自行修改）。
@@ -258,7 +264,7 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 
 - ✅（2026-08-08）编码 / 封装 / 推流 / 滤镜 / 硬件解码 / 流监控模块完成（7.4–7.9）
 - ✅（2026-08-08）编码链接入 Player（录制 / 推流 / HLS 开关）+ 硬解接入解码主链路（hardware_decode 配置，NVDEC 验证通过）
-- 直播播放路径切 NetworkBuffer（丢最旧，真低延迟）
+- ✅（2026-08-08）直播播放路径切 NetworkBuffer（丢最旧，真低延迟）——已完成，UDP/HTTP HLS 实测通过（见功能清单）
 - 播放器 UI 完善
 - 真实字幕文件端到端验证（.srt 渲染已实现，尚未用真实文件回归）
 - RTSP / RTMP 真实流验证（需用户提供摄像头 / 流服务器地址）
