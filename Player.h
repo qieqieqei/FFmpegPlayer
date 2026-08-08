@@ -499,6 +499,14 @@ private:
 
     std::string switchPath;
 
+    // ---------- 断网重连（8.3） ----------
+
+    std::string currentMediaPath;                    // 当前媒体路径（重连目标）
+
+    std::atomic<bool> reconnectRequested{ false };   // Demux 线程检测到断流后置位
+
+    std::atomic<int> reconnectAttempts{ 0 };         // 重连尝试计数
+
     // ---------- 成员：队列（Player 直接持有） ----------
 
     PacketQueue videoPacketQueue;   // 视频包队列（点播：满阻塞背压）

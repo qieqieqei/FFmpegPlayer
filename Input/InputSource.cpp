@@ -169,6 +169,11 @@ bool InputSource::OpenWithOptions(
 
     // ---------- 读取流信息（时长 / 码率 / 流列表） ----------
 
+    // 直播重连可能错过关键帧（GOP 内无 IDR），默认 5s 分析窗口常不足：
+    // 调大到 12s（覆盖 8s GOP），等 SPS 关键帧解析出分辨率
+    fmt->max_analyze_duration =
+        12LL * AV_TIME_BASE;
+
     ret =
         avformat_find_stream_info(
             fmt.get(),

@@ -225,6 +225,9 @@ bool Player::Init(
 bool Player::OpenMedia(
     const std::string& path)
 {
+    // 记录当前媒体路径（断网重连目标）
+    currentMediaPath = path;
+
     // 复位队列打断状态
     videoPacketQueue.ResetInterrupt();
 
@@ -359,6 +362,19 @@ bool Player::OpenMedia(
 
     AVCodecContext* vCtx =
         videoDecoder->GetContext();
+
+    // 直播重连可能拿到未解析 SPS 的流（0x0）：提前失败，
+    // 走重连循环重试（等下一个关键帧）
+    if (vCtx->width <= 0 ||
+        vCtx->height <= 0)
+    {
+        Logger::Warn()
+            << "[Player] Video stream not ready "
+            << "(0x0), will retry"
+            << std::endl;
+
+        return false;
+    }
 
     // ---------- 播放统计（5.7） ----------
 
@@ -653,6 +669,101 @@ bool Player::Run()
                     "Switch media failed");
 
                 quit = true;
+            }
+
+            continue;
+        }
+
+        // ---------- 断网重连（8.3）：Demux 线程检测到断流 ----------
+
+        if (reconnectRequested.load())
+        {
+            reconnectRequested.store(false);
+
+            Logger::Warn()
+                << "[Player] Network reconnect : "
+                << currentMediaPath
+                << std::endl;
+
+            // 循环重试直到成功 / 超限 / 退出
+            // 注意：不用 this->quit——SwitchMedia 内部 StopThreads 会置位它
+            bool ok = false;
+
+            while (!ok && !quit)
+            {
+                // SwitchMedia：停线程 -> 释放 -> 重新打开
+                ok = SwitchMedia(currentMediaPath);
+
+                if (ok)
+                {
+                    if (!StartThreads())
+                    {
+                        quit = true;
+
+                        break;
+                    }
+
+                    state = PlayerState::Playing;
+
+                    if (audioDevice)
+                    {
+                        audioDevice->SetPaused(false);
+                    }
+
+                    reconnectAttempts.store(0);
+
+                    // 重置停滞检测状态，避免误报
+                    if (streamMonitor)
+                    {
+                        streamMonitor->Reset();
+                    }
+
+                    Logger::Info()
+                        << "[Player] Reconnect success"
+                        << std::endl;
+                }
+                else
+                {
+                    int attempts =
+                        reconnectAttempts
+                            .fetch_add(1) +
+                        1;
+
+                    StreamConfig cfg =
+                        configManager ?
+                        configManager->GetStreamConfig() :
+                        StreamConfig();
+
+                    int maxAttempts =
+                        cfg.reconnectMaxAttempts;
+
+                    int delayMs =
+                        cfg.reconnectDelayMs;
+
+                    // maxAttempts <= 0：无限重试（24h 场景）
+                    if (maxAttempts > 0 &&
+                        attempts >= maxAttempts)
+                    {
+                        ErrorHandler::Log(
+                            ErrorTag::Player,
+                            "Reconnect failed, give up");
+
+                        // 停止播放，等待用户操作
+                        demuxEof.store(true);
+
+                        break;
+                    }
+
+                    Logger::Warn()
+                        << "[Player] Reconnect attempt "
+                        << attempts
+                        << " failed, retry in "
+                        << delayMs
+                        << " ms"
+                        << std::endl;
+
+                    SDL_Delay(delayMs);
+                }
             }
 
             continue;
@@ -2950,6 +3061,25 @@ void Player::DemuxLoop()
                     ErrorTag::Player,
                     "av_read_frame",
                     ret);
+            }
+
+            // ---------- 断网重连（8.3）：直播流报错/EOF 触发 ----------
+
+            if (useNetBuffer &&
+                demuxer &&
+                demuxer->IsNetwork())
+            {
+                Logger::Warn()
+                    << "[Player] Network stream error, "
+                    << "requesting reconnect"
+                    << std::endl;
+
+                reconnectRequested.store(true);
+
+                // 打断阻塞读，退出 Demux 线程（主循环负责重建）
+                demuxer->SetAbort(true);
+
+                break;
             }
 
             // 短暂等待，让 Seek 请求有机会被处理

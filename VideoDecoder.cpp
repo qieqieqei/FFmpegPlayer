@@ -88,6 +88,8 @@ bool VideoDecoder::Init(
         << "x"
         << codecCtx->height
         << ")"
+        << " extradata="
+        << codecCtx->extradata_size
         << std::endl;
 
     // 解码帧缓冲区
