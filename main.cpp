@@ -112,10 +112,27 @@ int main(
 
     // ---------- 播放列表（6.8）：多文件 / 单文件 / 默认 ----------
 
+    // 注意：选项（--record/--hls/--push/-v/--log-file）可能出现在文件之后，
+    // 构建列表时必须跳过，否则会被当成播放文件（EOF 后自动播到选项名而失败）
     if (firstFile < argc)
     {
         for (int i = firstFile; i < argc; i++)
         {
+            if (std::strcmp(argv[i], "--record") == 0 ||
+                std::strcmp(argv[i], "--hls") == 0 ||
+                std::strcmp(argv[i], "--push") == 0 ||
+                std::strcmp(argv[i], "-v") == 0)
+            {
+                continue;
+            }
+
+            if (std::strcmp(argv[i], "--log-file") == 0)
+            {
+                i++;  // 跳过日志文件名
+
+                continue;
+            }
+
             Logger::Info()
                 << "[Main] Add : "
                 << argv[i]

@@ -261,6 +261,48 @@ bool Player::OpenMedia(
             demuxer->IsLive());
     }
 
+    // 直播流：Demux<->Decode 队列切换 NetworkBuffer（满丢最旧，低延迟）
+    // 点播/本地文件：保持 PacketQueue 满阻塞背压
+    useNetBuffer =
+        demuxer->IsLive();
+
+    if (useNetBuffer)
+    {
+        int cap = 600;
+
+        int targetMs = 300;
+
+        if (configManager)
+        {
+            const StreamConfig& sc =
+                configManager->GetStreamConfig();
+
+            cap = sc.maxBufferPackets;
+
+            targetMs = sc.bufferTargetMs;
+        }
+
+        videoNetBuffer.SetMaxSize(cap);
+
+        // 音频包更小更密，上限减半（至少 30 包）
+        audioNetBuffer.SetMaxSize(
+            std::max(30, cap / 2));
+
+        // 直播目标缓冲（覆盖默认 300ms，按配置）
+        if (bufferController)
+        {
+            bufferController->SetTargetBufferMs(
+                targetMs);
+        }
+
+        Logger::Info()
+            << "[Player] Live buffer : NetworkBuffer "
+            << "cap=" << cap
+            << " target=" << targetMs
+            << "ms"
+            << std::endl;
+    }
+
     if (networkStatistics)
     {
         networkStatistics->Reset();
@@ -905,6 +947,16 @@ bool Player::Run()
 
         // 更新缓冲统计
         UpdateStatistics();
+
+        // 直播缓冲状态跳变提示（7.3）：进入"缓冲中"时一次性打印
+        if (useNetBuffer &&
+            bufferController &&
+            bufferController->ConsumeBufferingEvent())
+        {
+            Logger::Info()
+                << "[Player] Network buffering..."
+                << std::endl;
+        }
     }
 
     // ---------- 退出清理 ----------
@@ -1649,8 +1701,8 @@ void Player::UpdateStatistics()
     }
 
     statistics->UpdateBuffers(
-        videoPacketQueue.Size(),           // 视频包缓冲
-        audioPacketQueue.Size(),           // 音频包缓冲
+        GetVideoQueueSize(),           // 视频包缓冲（直播=NetworkBuffer）
+        GetAudioQueueSize(),           // 音频包缓冲
         videoFrameQueue.Size(),            // 视频帧缓冲
         audioDevice ?
             audioDevice->GetQueuedSize() : 0,   // 音频缓冲（字节）
@@ -1667,14 +1719,14 @@ void Player::UpdateStatistics()
 
     // 缓冲水位：包数
     networkStatistics->SetBufferLevel(
-        videoPacketQueue.Size(),
-        MAX_VIDEO_PACKETS);
+        GetVideoQueueSize(),
+        GetVideoQueueCapacity());
 
     // 估算缓冲时长（毫秒）：
     //   视频：包数 * 帧时长
     //   音频：缓冲字节 / (采样率 * 声道 * 2字节)
     double bufferedMs =
-        videoPacketQueue.Size() *
+        GetVideoQueueSize() *
         videoFrameDuration *
         1000.0;
 
@@ -1706,6 +1758,113 @@ void Player::UpdateStatistics()
     {
         streamMonitor->Tick();
     }
+}
+
+// ============================================================
+// 直播/点播双路径包队列（7.3）
+//
+//   点播/本地文件：PacketQueue（满阻塞背压，防无界内存）
+//   直播流：       NetworkBuffer（满丢最旧包，控制延迟上限）
+//
+// 统一入口，Demux / Video / Audio 线程不关心当前模式。
+// ============================================================
+
+bool Player::PushVideoPacket(
+    AVPacket* pkt)
+{
+    if (useNetBuffer)
+    {
+        return videoNetBuffer.Push(pkt);
+    }
+
+    return videoPacketQueue.Push(
+        pkt,
+        MAX_VIDEO_PACKETS);
+}
+
+bool Player::PushAudioPacket(
+    AVPacket* pkt)
+{
+    if (useNetBuffer)
+    {
+        return audioNetBuffer.Push(pkt);
+    }
+
+    return audioPacketQueue.Push(
+        pkt,
+        MAX_AUDIO_PACKETS);
+}
+
+AVPacket* Player::PopVideoPacket(
+    int timeoutMs)
+{
+    if (useNetBuffer)
+    {
+        return videoNetBuffer.Pop(timeoutMs);
+    }
+
+    return videoPacketQueue.Pop(timeoutMs);
+}
+
+AVPacket* Player::PopAudioPacket(
+    int timeoutMs)
+{
+    if (useNetBuffer)
+    {
+        return audioNetBuffer.Pop(timeoutMs);
+    }
+
+    return audioPacketQueue.Pop(timeoutMs);
+}
+
+bool Player::IsVideoQueueInterrupted() const
+{
+    if (useNetBuffer)
+    {
+        return videoNetBuffer.IsInterrupted();
+    }
+
+    return videoPacketQueue.IsInterrupted();
+}
+
+bool Player::IsAudioQueueInterrupted() const
+{
+    if (useNetBuffer)
+    {
+        return audioNetBuffer.IsInterrupted();
+    }
+
+    return audioPacketQueue.IsInterrupted();
+}
+
+int Player::GetVideoQueueSize() const
+{
+    if (useNetBuffer)
+    {
+        return videoNetBuffer.Size();
+    }
+
+    return videoPacketQueue.Size();
+}
+
+int Player::GetAudioQueueSize() const
+{
+    if (useNetBuffer)
+    {
+        return audioNetBuffer.Size();
+    }
+
+    return audioPacketQueue.Size();
+}
+
+int Player::GetVideoQueueCapacity() const
+{
+    if (useNetBuffer)
+    {
+        return videoNetBuffer.GetMaxSize();
+    }
+
+    return MAX_VIDEO_PACKETS;
 }
 
 // ============================================================
@@ -2804,6 +2963,11 @@ void Player::StopThreads()
 
     videoFrameQueue.Interrupt();
 
+    // 直播队列（NetworkBuffer）同样打断
+    videoNetBuffer.Interrupt();
+
+    audioNetBuffer.Interrupt();
+
     // 打断网络流的阻塞读取（av_read_frame 会立即返回）
     // 否则 RTSP/HTTP 断线或超时时 join 会卡死
     if (demuxer)
@@ -2909,10 +3073,8 @@ void Player::DemuxLoop()
         if (pkt->stream_index ==
             demuxer->GetVideoIndex())
         {
-            // 视频包入队（Video 线程消费）
-            if (!videoPacketQueue.Push(
-                pkt,
-                MAX_VIDEO_PACKETS))
+            // 视频包入队（直播：NetworkBuffer 满丢最旧；点播：背压）
+            if (!PushVideoPacket(pkt))
             {
                 // 入队被打断（Seek/退出），自行释放
                 av_packet_free(&pkt);
@@ -2922,10 +3084,8 @@ void Player::DemuxLoop()
             pkt->stream_index ==
             demuxer->GetAudioIndex())
         {
-            // 音频包入队（Audio 线程消费）
-            if (!audioPacketQueue.Push(
-                pkt,
-                MAX_AUDIO_PACKETS))
+            // 音频包入队（直播：NetworkBuffer；点播：背压）
+            if (!PushAudioPacket(pkt))
             {
                 av_packet_free(&pkt);
             }
@@ -3146,11 +3306,11 @@ void Player::VideoDecodeLoop()
         // ---------- 取视频包 ----------
 
         AVPacket* pkt =
-            videoPacketQueue.Pop(50);
+            PopVideoPacket(50);
 
         if (!pkt)
         {
-            if (videoPacketQueue.IsInterrupted())
+            if (IsVideoQueueInterrupted())
             {
                 // Seek / 退出中：等待队列恢复
                 SDL_Delay(2);
@@ -3215,7 +3375,7 @@ void Player::VideoDecodeLoop()
             continue;
         }
 
-        if (videoPacketQueue.IsInterrupted())
+        if (IsVideoQueueInterrupted())
         {
             // 取到的是 Seek 前的旧包，丢弃
             av_packet_free(&pkt);
@@ -3359,11 +3519,11 @@ void Player::AudioDecodeLoop()
         // ---------- 取音频包 ----------
 
         AVPacket* pkt =
-            audioPacketQueue.Pop(50);
+            PopAudioPacket(50);
 
         if (!pkt)
         {
-            if (audioPacketQueue.IsInterrupted())
+            if (IsAudioQueueInterrupted())
             {
                 // Seek / 退出中：等待队列恢复
                 SDL_Delay(2);
@@ -3394,7 +3554,7 @@ void Player::AudioDecodeLoop()
             continue;
         }
 
-        if (audioPacketQueue.IsInterrupted() ||
+        if (IsAudioQueueInterrupted() ||
             audioAbort.load())
         {
             // Seek / 退出期间丢弃
@@ -3653,6 +3813,15 @@ void Player::ReleaseMedia()
     audioPacketQueue.ResetInterrupt();
 
     videoFrameQueue.ResetInterrupt();
+
+    // 直播队列（NetworkBuffer）同样清空 + 复位
+    videoNetBuffer.Clear();
+
+    audioNetBuffer.Clear();
+
+    videoNetBuffer.ResetInterrupt();
+
+    audioNetBuffer.ResetInterrupt();
 
     // ---------- 字幕（媒体相关） ----------
 

@@ -4,6 +4,7 @@
 #include "Input/FileInput.h"
 #include "Input/NetworkInput.h"
 #include "Utils/ErrorHandler.h"
+#include "Utils/Logger.h"
 
 // ============================================================
 // InputSource - 统一输入接口（基类实现）
@@ -104,7 +105,7 @@ InputSource* InputSource::Create(
 
 bool InputSource::OpenWithOptions(
     const std::string& url,
-    AVDictionary* opts)
+    AVDictionary** opts)
 {
     // 复位中断标志（支持后续 Reconnect / 重复 Open）
     abort.store(false);
@@ -136,15 +137,15 @@ bool InputSource::OpenWithOptions(
     this->url =
         url;
 
-    AVDictionary** optsPtr =
-        opts ? &opts : nullptr;
-
+    // 注意：必须传 &opts（二级指针）。avformat_open_input 会消费/改写
+    // 字典（剩余协议选项写回 *opts），传值则调用方字典失去同步，
+    // 之后 av_dict_free 会 double free 崩溃（HTTP HLS 实测 0xC0000005）
     int ret =
         avformat_open_input(
             &fmt,
             url.c_str(),
             nullptr,
-            optsPtr);
+            opts);
 
     if (ret < 0)
     {

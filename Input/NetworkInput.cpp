@@ -80,7 +80,7 @@ bool NetworkInput::Open(
     bool ok =
         OpenWithOptions(
             url,
-            opts);
+            &opts);
 
     // avformat_open_input 消费选项后，剩余选项需手动释放
     av_dict_free(&opts);
@@ -224,17 +224,20 @@ void NetworkInput::BuildOptions(
             "0",
             0);
 
-        // 快速起播：减少探测深度
+        // 快速起播：减少探测深度（但不能为 0）
+        //   analyzeduration=0 会导致 HLS/TS 音频流参数（采样率/声道）
+        //   分析不完整，后续音频初始化崩溃（0xC0000005）
+        //   1.5s 探测窗口 + 300KB 探测上限：起播快且参数完整
         av_dict_set(
             opts,
             "analyzeduration",
-            "0",
+            "1500000",
             0);
 
         av_dict_set(
             opts,
             "probesize",
-            "50000",
+            "300000",
             0);
     }
 }

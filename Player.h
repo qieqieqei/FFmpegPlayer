@@ -47,6 +47,7 @@
 #include "Audio/SpeedController.h"
 #include "Queue/PacketQueue.h"
 #include "Queue/FrameQueue.h"
+#include "Network/NetworkBuffer.h"
 #include "Sync/SyncController.h"
 #include "Seek/SeekController.h"
 #include "Subtitle/SubtitleManager.h"
@@ -269,6 +270,31 @@ public:
     // 更新统计信息（渲染循环每帧调用）
     void UpdateStatistics();
 
+    // ---------- 直播/点播双路径包队列（7.3） ----------
+    // 点播/本地：PacketQueue（满阻塞背压）；直播：NetworkBuffer（满丢最旧）
+
+    bool PushVideoPacket(
+        AVPacket* pkt);
+
+    bool PushAudioPacket(
+        AVPacket* pkt);
+
+    AVPacket* PopVideoPacket(
+        int timeoutMs);
+
+    AVPacket* PopAudioPacket(
+        int timeoutMs);
+
+    bool IsVideoQueueInterrupted() const;
+
+    bool IsAudioQueueInterrupted() const;
+
+    int GetVideoQueueSize() const;
+
+    int GetAudioQueueSize() const;
+
+    int GetVideoQueueCapacity() const;
+
 private:
 
     // ---------- 线程 ----------
@@ -473,9 +499,15 @@ private:
 
     // ---------- 成员：队列（Player 直接持有） ----------
 
-    PacketQueue videoPacketQueue;   // 视频包队列（Demux -> Video）
+    PacketQueue videoPacketQueue;   // 视频包队列（点播：满阻塞背压）
 
-    PacketQueue audioPacketQueue;   // 音频包队列（Demux -> Audio）
+    PacketQueue audioPacketQueue;   // 音频包队列（点播：满阻塞背压）
+
+    NetworkBuffer videoNetBuffer;   // 视频包队列（直播：满丢最旧，低延迟 7.3）
+
+    NetworkBuffer audioNetBuffer;   // 音频包队列（直播：满丢最旧）
+
+    bool useNetBuffer = false;      // 直播流：Demux<->Decode 走 NetworkBuffer
 
     FrameQueue videoFrameQueue;     // 视频帧队列（Video -> Render）
 

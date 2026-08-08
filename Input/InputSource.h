@@ -92,10 +92,10 @@ public:
 protected:
 
     // 打开 + 绑定中断回调 + 读取流信息
-    // opts 为网络协议选项（可空）；成功后由调用方负责释放 opts
+    // opts 为网络协议选项（可空）；成功/失败后由调用方负责 av_dict_free(*opts)
     bool OpenWithOptions(
         const std::string& url,
-        AVDictionary* opts);
+        AVDictionary** opts);
 
     // 中断回调（FFmpeg 阻塞 I/O 期间周期性调用）
     static int InterruptCallback(
