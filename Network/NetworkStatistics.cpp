@@ -63,11 +63,17 @@ void NetworkStatistics::OnPacketReceived(
     Tick();
 }
 
-void NetworkStatistics::OnPacketDropped()
+void NetworkStatistics::OnPacketDropped(
+    int64_t count)
 {
+    if (count <= 0)
+    {
+        return;
+    }
+
     std::lock_guard<std::mutex> lock(mutex);
 
-    windowDropped++;
+    windowDropped += count;
 
     Tick();
 }

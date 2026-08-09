@@ -41,7 +41,9 @@ public:
         int bytes);
 
     // 因缓冲满丢了一个包（NetworkBuffer）
-    void OnPacketDropped();
+    // 网络丢包（队列满被丢弃，含 GOP 段丢包）
+    void OnPacketDropped(
+        int64_t count = 1);
 
     // 解码出一帧（输入 FPS）
     void OnFrameDecoded();

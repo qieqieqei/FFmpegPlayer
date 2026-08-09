@@ -269,6 +269,9 @@ public:
 
     PlayerStatistics* GetStatistics() const;
 
+    // 8.4：网络流统计（直播：FPS / 码率 / 丢包率 / 缓冲水位）
+    NetworkStatistics* GetNetworkStatistics() const;
+
     // 更新统计信息（渲染循环每帧调用）
     void UpdateStatistics();
 
@@ -441,6 +444,12 @@ private:
 
     // 网络流统计（7.2：FPS / 码率 / 丢包 / 延迟）
     std::unique_ptr<NetworkStatistics> networkStatistics;
+
+    // 8.4：网络丢包计数增量同步锚点（上次已上报到统计的 dropped 值）
+    // 仅 Demux 线程访问，无需加锁
+    int64_t lastVideoDropped = 0;
+
+    int64_t lastAudioDropped = 0;
 
     // 网络缓冲控制（7.3：缓冲水位）
     std::unique_ptr<BufferController> bufferController;

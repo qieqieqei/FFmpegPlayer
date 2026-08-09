@@ -130,6 +130,14 @@ void OSDManager::Update(
             << stats->GetDroppedFrames();
     }
 
+    // 8.4：网络统计行（直播：输入/输出 FPS、码率、丢包率、缓冲水位）
+    if (player->GetNetworkStatistics())
+    {
+        oss
+            << "\n"
+            << player->GetNetworkStatistics()->ToString();
+    }
+
     oss
         << "\n"
         << "Speed : "

@@ -1729,6 +1729,11 @@ PlayerStatistics* Player::GetStatistics() const
     return statistics.get();
 }
 
+NetworkStatistics* Player::GetNetworkStatistics() const
+{
+    return networkStatistics.get();
+}
+
 void Player::UpdateStatistics()
 {
     if (!statistics)
@@ -1817,8 +1822,29 @@ bool Player::PushVideoPacket(
 {
     if (useNetBuffer)
     {
-        return videoNetBuffer.Push(
-            std::move(pkt));
+        bool ok =
+            videoNetBuffer.Push(
+                std::move(pkt));
+
+        // 8.4：同步丢包统计（GOP 段丢包可能一次丢多个）
+        if (networkStatistics)
+        {
+            int64_t dropped =
+                videoNetBuffer.GetDroppedCount();
+
+            int64_t delta =
+                dropped - lastVideoDropped;
+
+            if (delta > 0)
+            {
+                networkStatistics->OnPacketDropped(
+                    delta);
+
+                lastVideoDropped = dropped;
+            }
+        }
+
+        return ok;
     }
 
     return videoPacketQueue.Push(
@@ -1831,8 +1857,29 @@ bool Player::PushAudioPacket(
 {
     if (useNetBuffer)
     {
-        return audioNetBuffer.Push(
-            std::move(pkt));
+        bool ok =
+            audioNetBuffer.Push(
+                std::move(pkt));
+
+        // 8.4：同步丢包统计（GOP 段丢包可能一次丢多个）
+        if (networkStatistics)
+        {
+            int64_t dropped =
+                audioNetBuffer.GetDroppedCount();
+
+            int64_t delta =
+                dropped - lastAudioDropped;
+
+            if (delta > 0)
+            {
+                networkStatistics->OnPacketDropped(
+                    delta);
+
+                lastAudioDropped = dropped;
+            }
+        }
+
+        return ok;
     }
 
     return audioPacketQueue.Push(
