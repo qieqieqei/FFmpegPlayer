@@ -373,3 +373,6 @@ hls_out/
 segment*.ts
 e2e*.txt
 sk_*.txt
+
+# 8.4 compile-check output (not deployed)
+build_check/
