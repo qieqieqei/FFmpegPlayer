@@ -16,6 +16,7 @@
 //     "low_latency"           : true,
 //     "reconnect_max_attempts": 3,
 //     "reconnect_delay_ms"    : 2000,
+//     "reconnect_backoff_factor": 1.0,
 //     "max_buffer_packets"    : 600,
 //     "buffer_target_ms"      : 300,
 //     "hls_segment_duration_sec" : 4,
@@ -55,11 +56,16 @@ struct StreamConfig
 
     bool lowLatency = true;                 // 低延迟模式（nobuffer + 快速探测）
 
-    // ---------- 断线重连（7.2） ----------
+    // ---------- 断线重连（7.2 / 8.4） ----------
 
     int reconnectMaxAttempts = 3;           // 最大重连次数
 
     int reconnectDelayMs = 2000;            // 重连间隔（毫秒）
+
+    // 8.4：指数退避因子。1.0 = 固定间隔（默认，行为与旧版一致）；
+    // 大于 1.0（如 2.0）开启指数退避：delay * factor^(n-1)，封顶 30s，
+    // 长时间断网时避免高频重试打服务器
+    double reconnectBackoffFactor = 1.0;    // 指数退避因子（8.4）
 
     // ---------- 网络缓冲（7.3） ----------
 

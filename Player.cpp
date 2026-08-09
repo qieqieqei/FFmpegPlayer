@@ -740,6 +740,34 @@ bool Player::Run()
                     int delayMs =
                         cfg.reconnectDelayMs;
 
+                    // 8.4：可选指数退避（factor > 1.0 时开启）：
+                    // delay * factor^(attempts-1)，封顶 30s，
+                    // 长时间断网避免高频重试打服务器
+                    if (cfg.reconnectBackoffFactor > 1.0)
+                    {
+                        double backoff =
+                            static_cast<double>(delayMs);
+
+                        for (int i = 1;
+                            i < attempts;
+                            ++i)
+                        {
+                            backoff *=
+                                cfg.reconnectBackoffFactor;
+                        }
+
+                        const double kMaxBackoffMs =
+                            30000.0;
+
+                        if (backoff > kMaxBackoffMs)
+                        {
+                            backoff = kMaxBackoffMs;
+                        }
+
+                        delayMs =
+                            static_cast<int>(backoff);
+                    }
+
                     // maxAttempts <= 0：无限重试（24h 场景）
                     if (maxAttempts > 0 &&
                         attempts >= maxAttempts)

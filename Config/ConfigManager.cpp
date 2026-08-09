@@ -887,6 +887,10 @@ void ConfigManager::LoadStream(
     stream.reconnectDelayMs =
         GetInt(root, "reconnect_delay_ms", stream.reconnectDelayMs);
 
+    // 8.4：指数退避因子（默认 1.0 = 固定间隔）
+    stream.reconnectBackoffFactor =
+        GetNumber(root, "reconnect_backoff_factor", stream.reconnectBackoffFactor);
+
     stream.maxBufferPackets =
         GetInt(root, "max_buffer_packets", stream.maxBufferPackets);
 
