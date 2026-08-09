@@ -26,6 +26,13 @@
 - ✅ 重连目标 = `OpenMedia` 记录的 `currentMediaPath`；0x0 分辨率（SPS 未解析）提前失败走重试，等下一个关键帧；`max_analyze_duration` 5s→12s 覆盖 8s GOP
 - ✅ 实测：mediamtx + ffmpeg 合成推流（GOP=1s 每秒关键帧）模拟断网/恢复——断流检测 → **1.6s 重连成功 → 渲染恢复**；24h 长测 48 轮断网/恢复，截至 2026-08-09 16/48 轮全 PASS（脚本 `rtsp_reconnect_test.ps1` 快速验证 + `rtsp_24h_test.ps1` 长测，均已入仓）
 
+### 队列所有权与等待优化（8.4）
+- ✅ **队列 RAII 所有权改造**：`PacketQueue` / `FrameQueue` / `NetworkBuffer` 元素从裸指针改为 `PacketPtr` / `FramePtr`（`Utils/FFmpegPtr.h` 别名），Push 移动语义交接所有权、Pop 返回所有权，Demux → 队列 → 解码器全链路无共享裸指针，杜绝 double-free / use-after-free
+- ✅ **谓词等待替代轮询**：`cv.wait_for(10ms)` 轮询改为谓词等待（`cv.wait(lock, pred)` / `wait_for(lock, timeout, pred)`），条件满足（有数据 / 不满 / 打断）立即唤醒，不再空转
+- ✅ **GOP 感知丢包**（直播 NetworkBuffer 满）：不再盲目丢最旧包（会撕裂 GOP 导致花屏），改为丢到关键帧边界——队头非关键帧时丢到第一个关键帧之前（保留完整 GOP 起点）；队头即关键帧时整段丢弃等下一个关键帧重建
+- ✅ **丢包统计打通**：NetworkBuffer 丢弃计数增量同步 `NetworkStatistics`（OSD 新增 Net 行显示 `Loss %`），丢包可观测
+- ✅ **可配置指数退避**：`reconnect_backoff_factor`（stream.json，默认 1.0 = 固定间隔，行为不变）；>1.0 开启 `delay * factor^(n-1)` 封顶 30s，长时间断网避免高频重试打服务器
+
 ### 编码 / 封装 / 推流 / 滤镜（7.x 第二阶段）
 - ✅ 视频编码 `Encoder/VideoEncoder`：libx264 / libx265 / h264_nvenc；直播低延迟（libx264 `tune=zerolatency`，nvenc `preset=ll` + `bf=0`），GOP=2s，输入 YUV420P
 - ✅ 音频编码 `Encoder/AudioEncoder`：AAC / Opus；内部 swr 自动重采样为编码器所需格式（AAC→FLTP）
@@ -275,6 +282,7 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 - ✅（2026-08-08）编码链接入 Player（录制 / 推流 / HLS 开关）+ 硬解接入解码主链路（hardware_decode 配置，NVDEC 验证通过）
 - ✅（2026-08-08）直播播放路径切 NetworkBuffer（丢最旧，真低延迟）——已完成，UDP/HTTP HLS 实测通过（见功能清单）
 - ✅（2026-08-09）RTSP 断网自动重连（8.3）——断流检测 + 自动重连 + 渲染恢复；24h 断网长测进行中（16/48 轮全 PASS），模拟验证全覆盖
+- ✅（2026-08-09）队列 RAII 所有权 + 谓词等待 + GOP 感知丢包（8.4）——评审意见（裸指针隐患 / 10ms 轮询 / 丢包策略 / 丢包可观测）落实；24h 长测结束后部署正式编译 + 回归
 - 播放器 UI 完善
 - 真实字幕文件端到端验证（.srt 渲染已实现，尚未用真实文件回归）
 - RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）
