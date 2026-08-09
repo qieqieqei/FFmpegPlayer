@@ -13,7 +13,7 @@ FrameQueue::~FrameQueue()
 }
 
 bool FrameQueue::Push(
-    AVFrame* frame,
+    FramePtr&& frame,
     int maxSize)
 {
     if (!frame)
@@ -23,50 +23,62 @@ bool FrameQueue::Push(
 
     std::unique_lock<std::mutex> lock(mutex);
 
-    while (
-        !interrupted.load() &&
-        static_cast<int>(queue.size()) >= maxSize)
-    {
-        cv.wait_for(
-            lock,
-            std::chrono::milliseconds(10));
-    }
+    // 谓词等待：队列不满或被打断即返回（8.4：替代 wait_for(10ms) 轮询）
+    cv.wait(
+        lock,
+        [this, maxSize]
+        {
+            return
+                interrupted.load() ||
+                static_cast<int>(queue.size()) < maxSize;
+        });
 
     if (interrupted.load())
     {
         return false;
     }
 
-    queue.push(frame);
+    queue.push(std::move(frame));
 
     cv.notify_all();
 
     return true;
 }
 
-AVFrame* FrameQueue::Pop(
+FramePtr FrameQueue::Pop(
     int timeoutMs)
 {
     std::unique_lock<std::mutex> lock(mutex);
 
-    if (queue.empty())
+    if (timeoutMs <= 0)
     {
-        if (timeoutMs <= 0)
+        // 不等待：仅尝试一次
+        if (queue.empty())
         {
-            return nullptr;
+            return FramePtr();
         }
-
+    }
+    else
+    {
+        // 谓词等待：有帧或被打断立即返回，无需轮询
         cv.wait_for(
             lock,
-            std::chrono::milliseconds(timeoutMs));
+            std::chrono::milliseconds(timeoutMs),
+            [this]
+            {
+                return
+                    interrupted.load() ||
+                    !queue.empty();
+            });
     }
 
     if (queue.empty())
     {
-        return nullptr;
+        return FramePtr();
     }
 
-    AVFrame* frame = queue.front();
+    FramePtr frame =
+        std::move(queue.front());
 
     queue.pop();
 
@@ -77,13 +89,10 @@ void FrameQueue::Clear()
 {
     std::lock_guard<std::mutex> lock(mutex);
 
+    // FramePtr 析构自动 av_frame_free
     while (!queue.empty())
     {
-        AVFrame* frame = queue.front();
-
         queue.pop();
-
-        av_frame_free(&frame);
     }
 
     cv.notify_all();

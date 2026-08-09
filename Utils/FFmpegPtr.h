@@ -147,6 +147,13 @@ using AVFramePtr = FFmpegPtr<AVFrame, av_frame_free>;
 
 using AVPacketPtr = FFmpegPtr<AVPacket, av_packet_free>;
 
+// 队列所有权专用短别名（8.4）：
+//   PacketPtr / FramePtr 用于跨线程队列交接，
+//   所有权随对象移动，杜绝 double-free / use-after-free
+using PacketPtr = AVPacketPtr;
+
+using FramePtr = AVFramePtr;
+
 using AVCodecContextPtr = FFmpegPtr<AVCodecContext, avcodec_free_context>;
 
 using AVFormatContextPtr = FFmpegPtr<AVFormatContext, avformat_close_input>;

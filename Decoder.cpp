@@ -405,17 +405,18 @@ void Decoder::DemuxLoop()
 
         // ---------- 读一个包 ----------
 
-        AVPacket* pkt =
-            av_packet_alloc();
+        // 8.4：PacketPtr RAII，所有权随包流转（Demux -> 队列 -> 解码器）
+        PacketPtr pkt(
+            av_packet_alloc());
 
         int ret =
             av_read_frame(
                 fmt,
-                pkt);
+                pkt.get());
 
         if (ret < 0)
         {
-            av_packet_free(&pkt);
+            // pkt 作用域结束自动释放
 
             if (ret == AVERROR_EOF)
             {
@@ -447,25 +448,22 @@ void Decoder::DemuxLoop()
         if (pkt->stream_index == videoIndex)
         {
             // 视频包入队（Decode 线程消费）
-            if (!videoPacketQueue.Push(
-                pkt,
-                MAX_VIDEO_PACKETS))
-            {
-                // 入队被打断（Seek/退出），自行释放
-                av_packet_free(&pkt);
-            }
+            // 8.4：失败时 pkt 仍归本作用域，RAII 自动释放
+            videoPacketQueue.Push(
+                std::move(pkt),
+                MAX_VIDEO_PACKETS);
         }
         else if (
             pkt->stream_index == audioIndex &&
             audioPacketHandler)
         {
-            // 音频包交给 Player 处理（回调内负责释放）
-            audioPacketHandler(pkt);
+            // 音频包交给 Player 处理（回调内负责释放）：
+            // 8.4：release() 移交所有权，本作用域不再释放
+            audioPacketHandler(pkt.release());
         }
         else
         {
-            // 其他流（字幕等）直接丢弃
-            av_packet_free(&pkt);
+            // 其他流（字幕等）直接丢弃（RAII 自动释放）
         }
     }
 }
@@ -512,7 +510,8 @@ void Decoder::DecodeLoop()
 
         // ---------- 取视频包 ----------
 
-        AVPacket* pkt =
+        // 8.4：PacketPtr 返回所有权，无需手动释放
+        PacketPtr pkt =
             videoPacketQueue.Pop(50);
 
         if (!pkt)
@@ -557,8 +556,9 @@ void Decoder::DecodeLoop()
                         }
 
                         // 克隆一帧入队（frame 会被复用）
-                        AVFrame* out =
-                            av_frame_clone(frame);
+                        // 8.4：FramePtr 接管克隆帧所有权
+                        FramePtr out(
+                            av_frame_clone(frame));
 
                         av_frame_unref(frame);
 
@@ -567,13 +567,10 @@ void Decoder::DecodeLoop()
                             break;
                         }
 
-                        if (!videoFrameQueue.Push(
-                            out,
-                            MAX_VIDEO_FRAMES))
-                        {
-                            // 入队被打断，释放
-                            av_frame_free(&out);
-                        }
+                        // 失败时 out 作用域结束自动释放
+                        videoFrameQueue.Push(
+                            std::move(out),
+                            MAX_VIDEO_FRAMES);
                     }
                 }
 
@@ -591,20 +588,17 @@ void Decoder::DecodeLoop()
 
         if (videoPacketQueue.IsInterrupted())
         {
-            // 取到的是 Seek 前的旧包，丢弃
-            av_packet_free(&pkt);
-
+            // 取到的是 Seek 前的旧包，丢弃（RAII 自动释放）
             continue;
         }
 
         // ---------- 解码 ----------
 
+        // 8.4：send 为同步消费，pkt 用后自动释放
         int ret =
             avcodec_send_packet(
                 videoCodecCtx,
-                pkt);
-
-        av_packet_free(&pkt);
+                pkt.get());
 
         if (ret < 0 &&
             ret != AVERROR(EAGAIN))
@@ -645,8 +639,9 @@ void Decoder::DecodeLoop()
             }
 
             // 克隆一帧入队（frame 会被复用）
-            AVFrame* out =
-                av_frame_clone(frame);
+            // 8.4：FramePtr 接管克隆帧所有权
+            FramePtr out(
+                av_frame_clone(frame));
 
             av_frame_unref(frame);
 
@@ -656,11 +651,10 @@ void Decoder::DecodeLoop()
             }
 
             if (!videoFrameQueue.Push(
-                out,
+                std::move(out),
                 MAX_VIDEO_FRAMES))
             {
-                // 入队被打断（Seek/退出）
-                av_frame_free(&out);
+                // 入队被打断（Seek/退出）：out 自动释放
 
                 // 说明正在 Seek：flush 后等待恢复
                 if (videoFrameQueue.IsInterrupted())

@@ -13,7 +13,7 @@ PacketQueue::~PacketQueue()
 }
 
 bool PacketQueue::Push(
-    AVPacket* pkt,
+    PacketPtr&& pkt,
     int maxSize)
 {
     if (!pkt)
@@ -23,51 +23,62 @@ bool PacketQueue::Push(
 
     std::unique_lock<std::mutex> lock(mutex);
 
-    // 队列满了就等待（背压：让 Demux 线程慢下来）
-    while (
-        !interrupted.load() &&
-        static_cast<int>(queue.size()) >= maxSize)
-    {
-        cv.wait_for(
-            lock,
-            std::chrono::milliseconds(10));
-    }
+    // 谓词等待：队列不满或被打断即返回（8.4：替代 wait_for(10ms) 轮询）
+    cv.wait(
+        lock,
+        [this, maxSize]
+        {
+            return
+                interrupted.load() ||
+                static_cast<int>(queue.size()) < maxSize;
+        });
 
     if (interrupted.load())
     {
-        return false;   // 被打断，调用者自行释放 pkt
+        return false;   // 被打断，pkt 仍归调用者（RAII 自动释放）
     }
 
-    queue.push(pkt);
+    queue.push(std::move(pkt));
 
     cv.notify_all();
 
     return true;
 }
 
-AVPacket* PacketQueue::Pop(
+PacketPtr PacketQueue::Pop(
     int timeoutMs)
 {
     std::unique_lock<std::mutex> lock(mutex);
 
-    if (queue.empty())
+    if (timeoutMs <= 0)
     {
-        if (timeoutMs <= 0)
+        // 不等待：仅尝试一次
+        if (queue.empty())
         {
-            return nullptr;
+            return PacketPtr();
         }
-
+    }
+    else
+    {
+        // 谓词等待：有包或被打断立即返回，无需轮询
         cv.wait_for(
             lock,
-            std::chrono::milliseconds(timeoutMs));
+            std::chrono::milliseconds(timeoutMs),
+            [this]
+            {
+                return
+                    interrupted.load() ||
+                    !queue.empty();
+            });
     }
 
     if (queue.empty())
     {
-        return nullptr;
+        return PacketPtr();
     }
 
-    AVPacket* pkt = queue.front();
+    PacketPtr pkt =
+        std::move(queue.front());
 
     queue.pop();
 
@@ -78,13 +89,10 @@ void PacketQueue::Clear()
 {
     std::lock_guard<std::mutex> lock(mutex);
 
+    // PacketPtr 析构自动 av_packet_free
     while (!queue.empty())
     {
-        AVPacket* pkt = queue.front();
-
         queue.pop();
-
-        av_packet_free(&pkt);
     }
 
     cv.notify_all();

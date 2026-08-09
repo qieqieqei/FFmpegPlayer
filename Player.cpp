@@ -782,21 +782,20 @@ bool Player::Run()
 
         // ---------- 取一帧 ----------
 
-        AVFrame* frame = nullptr;
+        // 8.4：FramePtr 返回所有权，无需手动释放
+        FramePtr frame;
 
         // Seek 完成：丢弃目标时间之前的旧帧
         if (seekController->IsHandled())
         {
             while ((frame =
-                videoFrameQueue.Pop(0)) != nullptr)
+                videoFrameQueue.Pop(0)))
             {
-                // 旧帧（pts 小于目标）：丢弃
-                if (GetFramePts(frame) <
+                // 旧帧（pts 小于目标）：丢弃（RAII 自动释放）
+                if (GetFramePts(frame.get()) <
                     seekPosition - 0.05)
                 {
                     statistics->OnFrameDropped();
-
-                    av_frame_free(&frame);
 
                     continue;
                 }
@@ -925,19 +924,18 @@ bool Player::Run()
         // ---------- Seek 期间取到旧帧，丢弃 ----------
 
         if (seekPending &&
-            GetFramePts(frame) < seekPosition - 0.05)
+            GetFramePts(frame.get()) < seekPosition - 0.05)
         {
             statistics->OnFrameDropped();
 
-            av_frame_free(&frame);
-
+            // RAII 自动释放
             continue;
         }
 
         // ---------- 音视频同步（5.1） ----------
 
         double pts =
-            GetFramePts(frame);
+            GetFramePts(frame.get());
 
         // 网络统计：解码出一帧（输入 FPS）
         if (networkStatistics)
@@ -965,8 +963,7 @@ bool Player::Run()
 
                 statistics->OnFrameDropped();
 
-                av_frame_free(&frame);
-
+                // RAII 自动释放
                 continue;
             }
 
@@ -999,13 +996,11 @@ bool Player::Run()
                 delay -= chunk;
             }
 
-            // 等待期间状态变化：放弃这一帧
+            // 等待期间状态变化：放弃这一帧（RAII 自动释放）
             if (state == PlayerState::Paused ||
                 seekPending ||
                 seekController->IsHandled())
             {
-                av_frame_free(&frame);
-
                 continue;
             }
         }
@@ -1025,7 +1020,7 @@ bool Player::Run()
         // ---------- 渲染 ----------
 
         RenderFrame(
-            frame,
+            frame.get(),
             window,
             renderer,
             texture,
@@ -1049,9 +1044,7 @@ bool Player::Run()
 
         // 保存副本供截图（AVFramePtr 自动释放旧帧）
         lastFrame.reset(
-            av_frame_clone(frame));
-
-        av_frame_free(&frame);
+            av_frame_clone(frame.get()));
 
         // 更新时间 / 进度
         SetCurrentTime(pts);
@@ -1820,32 +1813,34 @@ void Player::UpdateStatistics()
 // ============================================================
 
 bool Player::PushVideoPacket(
-    AVPacket* pkt)
+    PacketPtr&& pkt)
 {
     if (useNetBuffer)
     {
-        return videoNetBuffer.Push(pkt);
+        return videoNetBuffer.Push(
+            std::move(pkt));
     }
 
     return videoPacketQueue.Push(
-        pkt,
+        std::move(pkt),
         MAX_VIDEO_PACKETS);
 }
 
 bool Player::PushAudioPacket(
-    AVPacket* pkt)
+    PacketPtr&& pkt)
 {
     if (useNetBuffer)
     {
-        return audioNetBuffer.Push(pkt);
+        return audioNetBuffer.Push(
+            std::move(pkt));
     }
 
     return audioPacketQueue.Push(
-        pkt,
+        std::move(pkt),
         MAX_AUDIO_PACKETS);
 }
 
-AVPacket* Player::PopVideoPacket(
+PacketPtr Player::PopVideoPacket(
     int timeoutMs)
 {
     if (useNetBuffer)
@@ -1856,7 +1851,7 @@ AVPacket* Player::PopVideoPacket(
     return videoPacketQueue.Pop(timeoutMs);
 }
 
-AVPacket* Player::PopAudioPacket(
+PacketPtr Player::PopAudioPacket(
     int timeoutMs)
 {
     if (useNetBuffer)
@@ -3040,15 +3035,16 @@ void Player::DemuxLoop()
 
         // ---------- 读一个包 ----------
 
-        AVPacket* pkt =
-            av_packet_alloc();
+        // 8.4：PacketPtr RAII，所有权随包流转（Demux -> 队列 -> 解码器）
+        PacketPtr pkt(
+            av_packet_alloc());
 
         int ret =
-            demuxer->ReadPacket(pkt);
+            demuxer->ReadPacket(pkt.get());
 
         if (ret < 0)
         {
-            av_packet_free(&pkt);
+            // pkt 作用域结束自动释放
 
             if (ret == AVERROR_EOF)
             {
@@ -3101,26 +3097,19 @@ void Player::DemuxLoop()
             demuxer->GetVideoIndex())
         {
             // 视频包入队（直播：NetworkBuffer 满丢最旧；点播：背压）
-            if (!PushVideoPacket(pkt))
-            {
-                // 入队被打断（Seek/退出），自行释放
-                av_packet_free(&pkt);
-            }
+            // 8.4：失败时 pkt 仍归本作用域，RAII 自动释放
+            PushVideoPacket(std::move(pkt));
         }
         else if (
             pkt->stream_index ==
             demuxer->GetAudioIndex())
         {
             // 音频包入队（直播：NetworkBuffer；点播：背压）
-            if (!PushAudioPacket(pkt))
-            {
-                av_packet_free(&pkt);
-            }
+            PushAudioPacket(std::move(pkt));
         }
         else
         {
-            // 其他流（字幕等）直接丢弃
-            av_packet_free(&pkt);
+            // 其他流（字幕等）直接丢弃（RAII 自动释放）
         }
     }
 
@@ -3330,7 +3319,8 @@ void Player::VideoDecodeLoop()
 
         // ---------- 取视频包 ----------
 
-        AVPacket* pkt =
+        // 8.4：PacketPtr 返回所有权，无需手动释放
+        PacketPtr pkt =
             PopVideoPacket(50);
 
         if (!pkt)
@@ -3374,8 +3364,9 @@ void Player::VideoDecodeLoop()
                         FeedOutputVideo(f);
 
                         // 克隆一帧入队（内部帧会被复用）
-                        AVFrame* out =
-                            av_frame_clone(f);
+                        // 8.4：FramePtr 接管克隆帧所有权
+                        FramePtr out(
+                            av_frame_clone(f));
 
                         av_frame_unref(f);
 
@@ -3384,13 +3375,10 @@ void Player::VideoDecodeLoop()
                             break;
                         }
 
-                        if (!videoFrameQueue.Push(
-                            out,
-                            MAX_VIDEO_FRAMES))
-                        {
-                            // 入队被打断，释放
-                            av_frame_free(&out);
-                        }
+                        // 失败时 out 作用域结束自动释放
+                        videoFrameQueue.Push(
+                            std::move(out),
+                            MAX_VIDEO_FRAMES);
                     }
                 }
 
@@ -3408,9 +3396,7 @@ void Player::VideoDecodeLoop()
 
         if (IsVideoQueueInterrupted())
         {
-            // 取到的是 Seek 前的旧包，丢弃
-            av_packet_free(&pkt);
-
+            // 取到的是 Seek 前的旧包，丢弃（RAII 自动释放）
             continue;
         }
 
@@ -3430,8 +3416,7 @@ void Player::VideoDecodeLoop()
 
             videoEof.store(false);
 
-            av_packet_free(&pkt);
-
+            // 丢弃 Seek 前的旧包（RAII 自动释放）
             continue;
         }
 
@@ -3442,16 +3427,14 @@ void Player::VideoDecodeLoop()
 
         if (!videoDecReady)
         {
-            av_packet_free(&pkt);
-
+            // 解码器未就绪：丢弃（RAII 自动释放）
             continue;
         }
 
         // ---------- 解码 ----------
 
-        SendVideoPacket(pkt);
-
-        av_packet_free(&pkt);
+        // 8.4：send 为同步消费，pkt 用后自动释放
+        SendVideoPacket(pkt.get());
 
         // ---------- 取出所有解码出的帧 ----------
 
@@ -3476,8 +3459,9 @@ void Player::VideoDecodeLoop()
             FeedOutputVideo(f);
 
             // 克隆一帧入队（内部帧会被复用）
-            AVFrame* out =
-                av_frame_clone(f);
+            // 8.4：FramePtr 接管克隆帧所有权
+            FramePtr out(
+                av_frame_clone(f));
 
             av_frame_unref(f);
 
@@ -3487,11 +3471,10 @@ void Player::VideoDecodeLoop()
             }
 
             if (!videoFrameQueue.Push(
-                out,
+                std::move(out),
                 MAX_VIDEO_FRAMES))
             {
-                // 入队被打断（Seek/退出）
-                av_frame_free(&out);
+                // 入队被打断（Seek/退出）：out 自动释放
 
                 // 说明正在 Seek：flush 后等待恢复
                 if (videoFrameQueue.IsInterrupted())
@@ -3555,7 +3538,8 @@ void Player::AudioDecodeLoop()
 
         // ---------- 取音频包 ----------
 
-        AVPacket* pkt =
+        // 8.4：PacketPtr 返回所有权，无需手动释放
+        PacketPtr pkt =
             PopAudioPacket(50);
 
         if (!pkt)
@@ -3594,9 +3578,7 @@ void Player::AudioDecodeLoop()
         if (IsAudioQueueInterrupted() ||
             audioAbort.load())
         {
-            // Seek / 退出期间丢弃
-            av_packet_free(&pkt);
-
+            // Seek / 退出期间丢弃（RAII 自动释放）
             continue;
         }
 
@@ -3615,9 +3597,7 @@ void Player::AudioDecodeLoop()
                 seekController->GetTarget() :
                 0.0);
 
-            // 丢弃这个包（可能是 Seek 前入队的残留）
-            av_packet_free(&pkt);
-
+            // 丢弃这个包（可能是 Seek 前入队的残留，RAII 自动释放）
             continue;
         }
 
@@ -3626,16 +3606,14 @@ void Player::AudioDecodeLoop()
             !speedController ||
             !audioDevice)
         {
-            av_packet_free(&pkt);
-
+            // 音频链未就绪：丢弃（RAII 自动释放）
             continue;
         }
 
         // ---------- 解码 ----------
 
-        audioDecoder->SendPacket(pkt);
-
-        av_packet_free(&pkt);
+        // 8.4：send 为同步消费，pkt 用后自动释放
+        audioDecoder->SendPacket(pkt.get());
 
         // 取出所有解码出的 PCM 帧
         AVFrame* f = nullptr;

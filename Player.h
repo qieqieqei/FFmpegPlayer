@@ -272,19 +272,20 @@ public:
     // 更新统计信息（渲染循环每帧调用）
     void UpdateStatistics();
 
-    // ---------- 直播/点播双路径包队列（7.3） ----------
+    // ---------- 直播/点播双路径包队列（7.3 / 8.4） ----------
     // 点播/本地：PacketQueue（满阻塞背压）；直播：NetworkBuffer（满丢最旧）
+    // 8.4：移动语义交接所有权（PacketPtr / FramePtr），无裸指针共享
 
     bool PushVideoPacket(
-        AVPacket* pkt);
+        PacketPtr&& pkt);
 
     bool PushAudioPacket(
-        AVPacket* pkt);
+        PacketPtr&& pkt);
 
-    AVPacket* PopVideoPacket(
+    PacketPtr PopVideoPacket(
         int timeoutMs);
 
-    AVPacket* PopAudioPacket(
+    PacketPtr PopAudioPacket(
         int timeoutMs);
 
     bool IsVideoQueueInterrupted() const;
