@@ -1,6 +1,8 @@
-# FFmpeg_text_claw
+# FFmpegPlayer（工程名 FFmpeg_text_claw）
 
 基于 **C++17 + FFmpeg 8.x + SDL2** 开发的 Windows 多线程音视频播放器（MSVC / Visual Studio 工程）。
+
+> GitHub：https://github.com/qieqieqei/FFmpegPlayer
 
 项目目标是深入学习音视频播放器底层架构，实现从 **媒体读取、解封装、音视频解码、同步控制到音视频输出** 的完整播放流程。模块化设计：播放器拆分为多个独立模块，通过线程安全队列连接，实现解码、渲染和控制逻辑解耦。
 
@@ -18,6 +20,11 @@
 - ✅ 网络统计 `Network/NetworkStatistics`：1s 滑动窗口统计输入/输出 FPS、码率、丢包率、缓冲水位、延迟估算
 - ✅ 缓冲控制 `Network/BufferController`：低/高水位模型（NeedBuffer / IsEnough），直播目标 300ms、点播 2000ms
 - ✅ 配置系统 `Config/`：自研轻量 JSON 解析器，`player.json`（窗口/音量/速度/默认 URL/日志）+ `stream.json`（RTSP/RTMP/编码/缓冲/HLS/滤镜参数，为后续阶段预留），缺失时用默认值不报错
+
+### 断网自动恢复（8.3）
+- ✅ **断网自动重连**：直播流（RTSP/RTMP/HLS）断流时，Demux 线程检测到 `av_read_frame` 错误/EOF → 请求重连 → 主循环 `SwitchMedia` 循环重试（`reconnect_max_attempts` / `reconnect_delay_ms` 可配，≤0 表示无限重试，适合 24h 无人值守）→ 重连成功后自动恢复渲染
+- ✅ 重连目标 = `OpenMedia` 记录的 `currentMediaPath`；0x0 分辨率（SPS 未解析）提前失败走重试，等下一个关键帧；`max_analyze_duration` 5s→12s 覆盖 8s GOP
+- ✅ 实测：mediamtx + ffmpeg 合成推流（GOP=1s 每秒关键帧）模拟断网/恢复——断流检测 → **1.6s 重连成功 → 渲染恢复**；24h 长测 48 轮断网/恢复，截至 2026-08-09 16/48 轮全 PASS（脚本 `rtsp_reconnect_test.ps1` 快速验证 + `rtsp_24h_test.ps1` 长测，均已入仓）
 
 ### 编码 / 封装 / 推流 / 滤镜（7.x 第二阶段）
 - ✅ 视频编码 `Encoder/VideoEncoder`：libx264 / libx265 / h264_nvenc；直播低延迟（libx264 `tune=zerolatency`，nvenc `preset=ll` + `bf=0`），GOP=2s，输入 YUV420P
@@ -235,6 +242,8 @@ FFmpeg_text_claw
 ├── Sync\                   # AudioClock / Clock / SyncController
 ├── Utils\                  # Logger（日志系统）/ ErrorHandler / FFmpegPtr
 ├── Font\simhei.ttf         # 中文字体
+├── rtsp_reconnect_test.ps1 # RTSP 断网重连快速验证（mediamtx + lavfi 推流，GOP=1s）
+├── rtsp_24h_test.ps1       # RTSP 24h 断网长测（48 轮断网/恢复，summary + 日志裁剪）
 ├── FFmpeg_text_claw.sln / .vcxproj
 └── README.md
 ```
@@ -265,6 +274,7 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 - ✅（2026-08-08）编码 / 封装 / 推流 / 滤镜 / 硬件解码 / 流监控模块完成（7.4–7.9）
 - ✅（2026-08-08）编码链接入 Player（录制 / 推流 / HLS 开关）+ 硬解接入解码主链路（hardware_decode 配置，NVDEC 验证通过）
 - ✅（2026-08-08）直播播放路径切 NetworkBuffer（丢最旧，真低延迟）——已完成，UDP/HTTP HLS 实测通过（见功能清单）
+- ✅（2026-08-09）RTSP 断网自动重连（8.3）——断流检测 + 自动重连 + 渲染恢复；24h 断网长测进行中（16/48 轮全 PASS），模拟验证全覆盖
 - 播放器 UI 完善
 - 真实字幕文件端到端验证（.srt 渲染已实现，尚未用真实文件回归）
-- RTSP / RTMP 真实流验证（需用户提供摄像头 / 流服务器地址）
+- RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）
