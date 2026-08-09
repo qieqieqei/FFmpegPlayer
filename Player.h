@@ -68,6 +68,8 @@
 #include "Network/RTMPPublisher.h"
 #include "FontManager.h"
 #include "OSDManager.h"
+#include "Utils/DecodeResult.h"
+
 #include "Utils/FFmpegPtr.h"
 
 extern "C" {
@@ -269,6 +271,9 @@ public:
 
     PlayerStatistics* GetStatistics() const;
 
+    // 8.4：是否硬件解码（评审六：解码路径可观测）
+    bool IsHardwareDecode() const;
+
     // 8.4：网络流统计（直播：FPS / 码率 / 丢包率 / 缓冲水位）
     NetworkStatistics* GetNetworkStatistics() const;
 
@@ -357,7 +362,10 @@ private:
         AVPacket* pkt);
 
     // 从当前激活的解码器取帧（硬解时已拷回系统内存，可直接用）
-    AVFrame* ReceiveVideoFrame();
+    // 8.4：解码结果三态可区分（评审七）
+    // Success 时 out 接管一帧（硬件模式已回读到系统内存）
+    DecodeResult ReceiveVideoFrame(
+        FramePtr& out);
 
     // 尝试创建硬件解码器（配置开启 + CUDA 可用 + h264/hevc 时）
     void TryInitHardwareDecoder(

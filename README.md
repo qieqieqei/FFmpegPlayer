@@ -10,6 +10,25 @@
 
 ## 功能清单
 
+### 模块状态总表（面试速览，避免"有目录=已完整"的误判）
+
+| 模块 | 状态 | 说明 |
+|---|---|---|
+| `Input/`（File/Network/RTSPClient） | ✅ 完成 | 协议工厂 + 超时注入 + 中断回调 |
+| `Sync/`（Audio/Video/MasterClock + Scheduler + Drop） | ✅ 完成 | 音频主时钟 + ffplay 级目标延迟调整 + 丢帧追赶 + 墙钟漂移校正 |
+| `Hardware/`（CUDAContext/HardwareDecoder） | ✅ 解码 / 🧪 渲染未做 | NVDEC/D3D11VA/DXVA2 解码 + 软解回退；**GPU 零拷贝渲染未实现**（回读 CPU） |
+| `Queue/` + `Network/NetworkBuffer` | ✅ 完成 | RAII 所有权 + 谓词等待 + GOP 感知丢包 |
+| `Decoder`（Video/Audio/Hardware） | ✅ 完成 | DecodeResult 三态（Success/NeedMore/End/Error） |
+| `Encoder/`（Video/Audio） | ✅ 完成 | libx264/libx265/nvenc；AAC/Opus |
+| `Muxer/`（FLV/HLS） | ✅ 完成 | FLV 文件/RTMP 推流、HLS 自动切片清理 |
+| `Filter/`（FilterGraph/Video/Audio） | ✅ 完成 | avfilter 通用封装，滤镜链配置（`video_filter`/`audio_filter`） |
+| `Subtitle/` | 🧪 实验性 | .srt 解析 + OSD 渲染已实现，**尚未用真实字幕文件端到端回归** |
+| `Screenshot/` | ✅ 完成 | PNG/JPG |
+| `Playlist/` | ✅ 完成 | 多文件连播（上一首/下一首/自动连播） |
+| `Seek/` | ✅ 完成 | 关键帧定位 + 解码器 flush + 代数防竞态 |
+| `Network/`（统计/缓冲/重连/推流/监控） | ✅ 完成 | 丢包率、缓冲水位、自动重连、RTMP 推流、健康巡检 |
+| `Config/` | ✅ 完成 | 自研轻量 JSON 解析，player.json + stream.json |
+
 ### 网络与配置（7.x）
 - ✅ 统一输入层 `Input/`：`InputSource` 抽象基类 + 工厂（按 URL 协议自动创建），`FileInput`（本地文件，支持 `file://`）、`NetworkInput`（rtsp/rtmp/http/https/HLS，按协议注入 `rtsp_transport=tcp`、`stimeout`/`rw_timeout` 超时、`fflags=nobuffer` 低延迟选项）、`RTSPClient`（连接生命周期管理：连接 / 断开 / 自动重连，次数上限 + 间隔）
 - ✅ 中断回调：`SetAbort()` 可打断阻塞中的网络读取（`av_read_frame` 立即返回），退出 / 切换媒体不再卡死
@@ -32,6 +51,10 @@
 - ✅ **GOP 感知丢包**（直播 NetworkBuffer 满）：不再盲目丢最旧包（会撕裂 GOP 导致花屏），改为丢到关键帧边界——队头非关键帧时丢到第一个关键帧之前（保留完整 GOP 起点）；队头即关键帧时整段丢弃等下一个关键帧重建
 - ✅ **丢包统计打通**：NetworkBuffer 丢弃计数增量同步 `NetworkStatistics`（OSD 新增 Net 行显示 `Loss %`），丢包可观测
 - ✅ **可配置指数退避**：`reconnect_backoff_factor`（stream.json，默认 1.0 = 固定间隔，行为不变）；>1.0 开启 `delay * factor^(n-1)` 封顶 30s，长时间断网避免高频重试打服务器
+- ✅ **解码结果三态可区分**（评审七）：`ReceiveFrame()` 从裸指针升级为 `DecodeResult` 枚举（`Success / NeedMorePacket / End / Error`）——`avcodec_receive_frame` 的 EAGAIN（继续送包）、EOF（解码结束）、错误不再被吞成同一个 nullptr；VideoDecoder / AudioDecoder / HardwareDecoder 统一，调用方明确处理每种结果
+- ✅ **ffplay 级目标延迟调整**（评审五）：同步不再只是 `videoPts - masterTime` 误差计算——按视频时钟与主时钟偏差微调：视频领先时 `delay` 加长（轻微领先翻倍、大领先直接加偏差，等音频）；视频落后时 `delay` 缩短（最快立即显示），落后超过阈值仍由 DropController 丢帧追赶（连续判定 + 冷却防抖）
+- ✅ **音频墙钟漂移校正**（评审五）：AudioClock 跟踪媒体时间与真实时间累积偏差，渲染循环每秒渐进拉回（单次 ≤5ms 无感知，偏差 <10ms 不动），长期播放进度不再漂移
+- ✅ **解码路径诚实标注**（评审六）：OSD 显示 `(HW decode)` / `(SW decode)`；硬件状态如实声明——NVDEC/D3D11VA/DXVA2 解码已完成，渲染为 `av_hwframe_transfer_data` 回读 CPU → SDL 纹理，**GPU 零拷贝渲染未实现**（SDL2 无 CUDA/D3D11 互操作 API；OpenGL interop 在 Windows 不稳定），不宣称"GPU 渲染"
 
 ### 编码 / 封装 / 推流 / 滤镜（7.x 第二阶段）
 - ✅ 视频编码 `Encoder/VideoEncoder`：libx264 / libx265 / h264_nvenc；直播低延迟（libx264 `tune=zerolatency`，nvenc `preset=ll` + `bf=0`），GOP=2s，输入 YUV420P
@@ -283,6 +306,7 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 - ✅（2026-08-08）直播播放路径切 NetworkBuffer（丢最旧，真低延迟）——已完成，UDP/HTTP HLS 实测通过（见功能清单）
 - ✅（2026-08-09）RTSP 断网自动重连（8.3）——断流检测 + 自动重连 + 渲染恢复；24h 断网长测进行中（16/48 轮全 PASS），模拟验证全覆盖
 - ✅（2026-08-09）队列 RAII 所有权 + 谓词等待 + GOP 感知丢包（8.4）——评审意见（裸指针隐患 / 10ms 轮询 / 丢包策略 / 丢包可观测）落实；24h 长测结束后部署正式编译 + 回归
+- ✅（2026-08-09）评审五/六/七落实（8.4）：解码三态 DecodeResult、ffplay 级目标延迟调整、音频墙钟漂移校正、解码路径诚实标注 + 模块状态总表
 - 播放器 UI 完善
 - 真实字幕文件端到端验证（.srt 渲染已实现，尚未用真实文件回归）
 - RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）

@@ -49,12 +49,17 @@ public:
 
     // 计算视频渲染延迟
     // videoPts: 当前视频帧的时间戳（秒）
+    // frameDuration: 当前帧显示时长（秒，1/fps 或相邻帧 PTS 差）
     //
     // 返回：
     //   > 0 : 视频帧超前，延迟这么多秒再显示
     //   < 0 : 视频帧落后，落后超过阈值时应丢帧
+    //
+    // 8.4（评审五）：内部按 ffplay compute_target_delay 规则
+    // 用视频时钟偏差微调：领先放慢（delay 增）、落后追赶（delay 减）
     double GetVideoDelay(
-        double videoPts);
+        double videoPts,
+        double frameDuration);
 
     // 延迟钳制（Seek/断流恢复等异常跳变保护）
     double ClampDelay(

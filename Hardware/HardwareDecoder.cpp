@@ -238,11 +238,13 @@ bool HardwareDecoder::SendPacket(
     return true;
 }
 
-AVFrame* HardwareDecoder::ReceiveFrame()
+DecodeResult HardwareDecoder::ReceiveFrame(
+    FramePtr& out)
 {
-    if (!codecCtx || !frame)
+    if (!codecCtx ||
+        !frame)
     {
-        return nullptr;
+        return DecodeResult::Error;
     }
 
     av_frame_unref(
@@ -253,12 +255,42 @@ AVFrame* HardwareDecoder::ReceiveFrame()
             codecCtx.get(),
             frame.get());
 
-    if (ret < 0)
+    if (ret == AVERROR(EAGAIN))
     {
-        return nullptr;
+        // 需要更多包：不是错误
+        return DecodeResult::NeedMorePacket;
     }
 
-    return frame.get();
+    if (ret == AVERROR_EOF)
+    {
+        // 解码真正结束
+        return DecodeResult::End;
+    }
+
+    if (ret < 0)
+    {
+        ErrorHandler::LogFFmpeg(
+            ErrorTag::Decoder,
+            "avcodec_receive_frame (hw)",
+            ret);
+
+        return DecodeResult::Error;
+    }
+
+    // 成功：克隆一帧交给调用方（GPU 帧引用转移，
+    // 所有权随 out 走；内部帧复用）
+    out.reset(
+        av_frame_clone(frame.get()));
+
+    av_frame_unref(
+        frame.get());
+
+    if (!out)
+    {
+        return DecodeResult::Error;
+    }
+
+    return DecodeResult::Success;
 }
 
 bool HardwareDecoder::TransferFrame(

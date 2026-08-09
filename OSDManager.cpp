@@ -87,7 +87,12 @@ void OSDManager::Update(
             << stats->GetResolution()
             << "\n"
             << "Codec : "
-            << stats->GetVideoCodec();
+            << stats->GetVideoCodec()
+            // 8.4（评审六）：诚实标注解码路径——
+            // 解码 GPU（HW）已完成，渲染仍为 CPU 回读
+            << (player->IsHardwareDecode() ?
+                " (HW decode)" :
+                " (SW decode)");
 
         if (!stats->GetAudioCodec().empty())
         {

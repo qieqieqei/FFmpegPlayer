@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Utils/DecodeResult.h"
+
 #include "Utils/FFmpegPtr.h"
 
 extern "C"
@@ -39,7 +41,10 @@ public:
     bool SendPacket(
         AVPacket* packet);
 
-    AVFrame* ReceiveFrame();
+    // 8.4：DecodeResult 三态区分（评审七）——
+    // Success（out 接管一帧）/ NeedMorePacket / End / Error
+    DecodeResult ReceiveFrame(
+        FramePtr& out);
 
     // 清空解码器内部缓冲（Seek 后调用）
     // 调用后需要重新 SendPacket 新位置的包

@@ -43,6 +43,26 @@ public:
     // 获取当前媒体时间（秒）
     double Get() const;
 
+    // ---------- 8.4：墙钟漂移校正（评审五） ----------
+
+    // 媒体时间与真实时间的累积偏差（秒）。
+    // 正 = 媒体时间比真实时间快（声卡实际采样率低于标称等）。
+    // 长期播放时若一直累积，进度条会偏离真实时间，
+    // 需要周期性调用 CorrectDrift() 渐进拉回。
+    double GetWallDrift() const;
+
+    // 渐进校正：把媒体时间轴向墙钟拉近。
+    // 每次最多修正 maxNudge 秒（默认 5ms，小于一帧时长无感知），
+    // 修正量为当前偏差的 20%；偏差小于 10ms 时不动作。
+    // 返回本次实际校正量（秒）。
+    double CorrectDrift(
+        double maxNudge = 0.005);
+
+private:
+
+    // 当前墙钟（秒，steady_clock）
+    static double WallNow();
+
 private:
 
     mutable std::mutex mutex;   // 保护基准 / 已播时长
@@ -52,4 +72,9 @@ private:
     double playedSeconds = 0.0; // 已播输出时长（秒）
 
     std::atomic<double> speedFactor{ 1.0 };   // 播放速度
+
+    // 8.4：墙钟基准（Reset 时记录，用于漂移检测）
+    double baseWallSeconds = 0.0;
+
+    bool wallInitialized = false;
 };
