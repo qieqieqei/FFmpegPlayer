@@ -1,4 +1,4 @@
-# FFmpegPlayer（工程名 FFmpeg_text_claw）
+# FFmpegPlayer
 
 基于 **C++17 + FFmpeg 8.x + SDL2** 开发的 Windows 多线程音视频播放器（MSVC / Visual Studio 工程）。
 
@@ -10,7 +10,7 @@
 
 ## 功能清单
 
-### 模块状态总表（面试速览，避免"有目录=已完整"的误判）
+### 模块状态总表
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
