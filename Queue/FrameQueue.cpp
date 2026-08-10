@@ -82,6 +82,8 @@ FramePtr FrameQueue::Pop(
 
     queue.pop();
 
+    cv.notify_all();
+
     return frame;
 }
 
