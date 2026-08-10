@@ -43,11 +43,12 @@
 ### 断网自动恢复（8.3）
 - ✅ **断网自动重连**：直播流（RTSP/RTMP/HLS）断流时，Demux 线程检测到 `av_read_frame` 错误/EOF → 请求重连 → 主循环 `SwitchMedia` 循环重试（`reconnect_max_attempts` / `reconnect_delay_ms` 可配，≤0 表示无限重试，适合 24h 无人值守）→ 重连成功后自动恢复渲染
 - ✅ 重连目标 = `OpenMedia` 记录的 `currentMediaPath`；0x0 分辨率（SPS 未解析）提前失败走重试，等下一个关键帧；`max_analyze_duration` 5s→12s 覆盖 8s GOP
-- ✅ 实测：mediamtx + ffmpeg 合成推流（GOP=1s 每秒关键帧）模拟断网/恢复——断流检测 → **1.6s 重连成功 → 渲染恢复**；24h 长测 48 轮断网/恢复，截至 2026-08-09 16/48 轮全 PASS（脚本 `rtsp_reconnect_test.ps1` 快速验证 + `rtsp_24h_test.ps1` 长测，均已入仓）
+- ✅ 实测：mediamtx + ffmpeg 合成推流（GOP=1s 每秒关键帧）模拟断网/恢复——断流检测 → **1.6s 重连成功 → 渲染恢复**；**24h 长测 48 轮全部跑完（2026-08-10 05:36 收尾）：38 次断流检测 37/38 重连成功 + 渲染恢复**，唯一失败 R26 是旧版 `maxAttempts=3×2s≈10s` 窗口 < 源停机 ~15s 所致（8.4 已改无限重试，不再有窗口限制）；另 8 轮“干净退出”为测试环境可见窗口被关，非播放器问题（脚本 `rtsp_reconnect_test.ps1` 快速验证 + `rtsp_24h_test.ps1` 长测，均已入仓）
 
 ### 队列所有权与等待优化（8.4）
 - ✅ **队列 RAII 所有权改造**：`PacketQueue` / `FrameQueue` / `NetworkBuffer` 元素从裸指针改为 `PacketPtr` / `FramePtr`（`Utils/FFmpegPtr.h` 别名），Push 移动语义交接所有权、Pop 返回所有权，Demux → 队列 → 解码器全链路无共享裸指针，杜绝 double-free / use-after-free
 - ✅ **谓词等待替代轮询**：`cv.wait_for(10ms)` 轮询改为谓词等待（`cv.wait(lock, pred)` / `wait_for(lock, timeout, pred)`），条件满足（有数据 / 不满 / 打断）立即唤醒，不再空转
+- ✅ **队列唤醒配对（2026-08-10 修复，commit 097e8ba）**：谓词等待改为**无超时** `cv.wait` 后，生产者只能靠 `Pop` 的 `notify_all()` 唤醒——初期 `Pop` 漏了 notify，帧队列填满（`MAX_VIDEO_FRAMES=12`）后视频解码线程永久阻塞，渲染循环消费完队列后静默空转（**“13 帧冻结”**：渲染 ~12 帧后停滞、进程存活、无日志；直播/点播均复现）。`FrameQueue::Pop` / `PacketQueue::Pop` 出队后补 `cv.notify_all()`。回归验证：RTSP 15s 连续渲染 322 帧；4 阶段回归 15/16 PASS（唯一 FAIL 为脚本判定串措辞，实际通过）
 - ✅ **GOP 感知丢包**（直播 NetworkBuffer 满）：不再盲目丢最旧包（会撕裂 GOP 导致花屏），改为丢到关键帧边界——队头非关键帧时丢到第一个关键帧之前（保留完整 GOP 起点）；队头即关键帧时整段丢弃等下一个关键帧重建
 - ✅ **丢包统计打通**：NetworkBuffer 丢弃计数增量同步 `NetworkStatistics`（OSD 新增 Net 行显示 `Loss %`），丢包可观测
 - ✅ **可配置指数退避**：`reconnect_backoff_factor`（stream.json，默认 1.0 = 固定间隔，行为不变）；>1.0 开启 `delay * factor^(n-1)` 封顶 30s，长时间断网避免高频重试打服务器
@@ -307,6 +308,7 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 - ✅（2026-08-09）RTSP 断网自动重连（8.3）——断流检测 + 自动重连 + 渲染恢复；24h 断网长测进行中（16/48 轮全 PASS），模拟验证全覆盖
 - ✅（2026-08-09）队列 RAII 所有权 + 谓词等待 + GOP 感知丢包（8.4）——评审意见（裸指针隐患 / 10ms 轮询 / 丢包策略 / 丢包可观测）落实；24h 长测结束后部署正式编译 + 回归
 - ✅（2026-08-09）评审五/六/七落实（8.4）：解码三态 DecodeResult、ffplay 级目标延迟调整、音频墙钟漂移校正、解码路径诚实标注 + 模块状态总表
+- ✅（2026-08-10）**13 帧渲染冻结根因定位并修复**（git bisect → 8e006b7 引入）：队列 `Pop` 缺 `notify_all()` 导致无超时谓词等待的生产者永久阻塞（commit 097e8ba）；4 阶段回归 15/16 PASS，RTSP 连续渲染恢复
 - 播放器 UI 完善
 - 真实字幕文件端到端验证（.srt 渲染已实现，尚未用真实文件回归）
 - RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）
