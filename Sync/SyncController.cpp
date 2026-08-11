@@ -29,15 +29,28 @@ double SyncController::GetMasterTime() const
 }
 
 double SyncController::GetVideoDelay(
-    double videoPts)
+    double videoPts,
+    double frameDuration)
 {
     // 主时钟时间 = 音频时钟（有音频）或视频时钟（无音频）
     double masterTime =
         masterClock.GetTime();
 
-    return frameScheduler.ComputeDelay(
-        videoPts,
-        masterTime);
+    double delay =
+        frameScheduler.ComputeDelay(
+            videoPts,
+            masterTime);
+
+    // 8.4（评审五）：ffplay 级目标延迟调整。
+    // 渲染线程已用当前帧 PTS 推进视频时钟，
+    // diff = 视频时钟 - 主时钟（正 = 视频领先）
+    double diff =
+        videoClock.Get() - masterTime;
+
+    return frameScheduler.ComputeTargetDelay(
+        delay,
+        diff,
+        frameDuration);
 }
 
 double SyncController::ClampDelay(

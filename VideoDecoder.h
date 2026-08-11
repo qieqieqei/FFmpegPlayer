@@ -25,6 +25,8 @@
 // 8.1：内部资源全部 RAII（FFmpegPtr），无需手动 Close 也不会泄漏
 // ============================================================
 
+#include "Utils/DecodeResult.h"
+
 #include "Utils/FFmpegPtr.h"
 
 extern "C" {
@@ -54,10 +56,12 @@ public:
     bool SendPacket(
         AVPacket* pkt);
 
-    // 取出一帧解码结果
-    // 返回内部复用帧（下次调用前有效），
-    // 没有可用的帧时返回 nullptr（需要继续 SendPacket）
-    AVFrame* ReceiveFrame();
+    // 取出一帧解码结果（8.4，评审七）
+    // 返回 DecodeResult 区分三态：Success（out 接管一帧，
+    // 所有权转移给调用方）/ NeedMorePacket（继续送包）/
+    // End（解码结束）/ Error（已记录日志）
+    DecodeResult ReceiveFrame(
+        FramePtr& out);
 
     // 清空解码器内部缓冲（Seek 后调用，否则解出旧数据）
     void Flush();

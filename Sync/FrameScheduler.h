@@ -33,6 +33,22 @@ public:
         double videoPts,
         double masterTime) const;
 
+    // 8.4：目标延迟调整（评审五，对齐 ffplay compute_target_delay）
+    // 在 ComputeDelay 基础上，按视频时钟与主时钟的偏差微调：
+    //   - 视频落后（diff <= -threshold）: delay 缩短（最快 0），
+    //     尽快显示追赶音频；落后超过丢帧阈值由 DropController 丢帧
+    //   - 视频领先（diff >= threshold） : delay 加长（慢显示等音频）——
+    //     delay 小时翻倍（轻微领先平滑放慢），delay 大时直接加 diff
+    //     （避免帧重复积压）
+    // 参数：
+    //   delay        : ComputeDelay 结果（videoPts - masterTime）
+    //   diff         : 视频时钟偏差 = videoClock - masterTime（秒）
+    //   frameDuration: 当前帧显示时长（秒，1/fps 或相邻帧 PTS 差）
+    double ComputeTargetDelay(
+        double delay,
+        double diff,
+        double frameDuration) const;
+
     // 延迟钳制：超出 [-maxBehind, maxAhead] 视为异常
     // （Seek 跳变 / 启动瞬间 / 断流重连后时间轴错位）
     // 返回钳制后的延迟，并可通过 isAbnormal 告知调用方

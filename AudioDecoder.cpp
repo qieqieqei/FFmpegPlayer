@@ -123,12 +123,13 @@ bool AudioDecoder::SendPacket(
     return ret >= 0;
 }
 
-AVFrame* AudioDecoder::ReceiveFrame()
+DecodeResult AudioDecoder::ReceiveFrame(
+    FramePtr& out)
 {
     if (!codecCtx ||
         !frame)
     {
-        return nullptr;
+        return DecodeResult::Error;
     }
 
     int ret =
@@ -136,12 +137,40 @@ AVFrame* AudioDecoder::ReceiveFrame()
             codecCtx.get(),
             frame.get());
 
-    if (ret < 0)
+    if (ret == AVERROR(EAGAIN))
     {
-        return nullptr;
+        // 需要更多包：不是错误
+        return DecodeResult::NeedMorePacket;
     }
 
-    return frame.get();
+    if (ret == AVERROR_EOF)
+    {
+        // 解码真正结束
+        return DecodeResult::End;
+    }
+
+    if (ret < 0)
+    {
+        ErrorHandler::LogFFmpeg(
+            ErrorTag::Audio,
+            "avcodec_receive_frame",
+            ret);
+
+        return DecodeResult::Error;
+    }
+
+    // 成功：克隆一帧交给调用方（内部帧复用，所有权随 out 转移）
+    out.reset(
+        av_frame_clone(frame.get()));
+
+    av_frame_unref(frame.get());
+
+    if (!out)
+    {
+        return DecodeResult::Error;
+    }
+
+    return DecodeResult::Success;
 }
 
 void AudioDecoder::Flush()

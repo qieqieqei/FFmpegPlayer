@@ -1029,9 +1029,27 @@ bool Player::Run()
         if (HasAudio() &&
             !isStep)
         {
+            // 8.4（评审五）：音频墙钟漂移渐进校正。
+            // 约每秒一次（60 帧 @60fps），把媒体时间轴向真实时间
+            // 拉回（单次 ≤5ms 无感知），长期播放进度不漂移
+            static int driftTick = 0;
+
+            if (++driftTick >= 60)
+            {
+                driftTick = 0;
+
+                if (audioDevice)
+                {
+                    audioDevice->GetClock()->CorrectDrift();
+                }
+            }
+
             // MasterClock 自动选择主时钟（音频优先）
+            // 8.4：传帧时长做 ffplay 级目标延迟调整（评审五）
             double delay =
-                syncController->GetVideoDelay(pts);
+                syncController->GetVideoDelay(
+                    pts,
+                    videoFrameDuration);
 
             if (syncController->ShouldDrop(delay))
             {
@@ -1807,6 +1825,13 @@ OSDManager* Player::GetOSDManager() const
 PlayerStatistics* Player::GetStatistics() const
 {
     return statistics.get();
+}
+
+bool Player::IsHardwareDecode() const
+{
+    return hwDecoder &&
+        hwDecoder->IsReady() &&
+        hwDecoder->IsHardware();
 }
 
 NetworkStatistics* Player::GetNetworkStatistics() const
@@ -3277,20 +3302,22 @@ bool Player::SendVideoPacket(
         false;
 }
 
-AVFrame* Player::ReceiveVideoFrame()
+DecodeResult Player::ReceiveVideoFrame(
+    FramePtr& out)
 {
     if (hwDecoder &&
         hwDecoder->IsReady())
     {
-        AVFrame* hwf =
-            hwDecoder->ReceiveFrame();
+        // 硬件路径：先取 GPU 帧，再回读到系统内存（NV12）
+        DecodeResult r =
+            hwDecoder->ReceiveFrame(out);
 
-        if (!hwf)
+        if (r != DecodeResult::Success)
         {
-            return nullptr;
+            return r;
         }
 
-        // 惰性创建拷贝目标帧
+        // 惰性创建回读目标帧
         if (!hwTransferFrame)
         {
             hwTransferFrame.reset(
@@ -3298,24 +3325,37 @@ AVFrame* Player::ReceiveVideoFrame()
 
             if (!hwTransferFrame)
             {
-                return nullptr;
+                return DecodeResult::Error;
             }
         }
 
-        // GPU 帧 -> 系统内存（NV12；软解模式直接 ref）
+        // GPU 帧 -> 系统内存（软解模式直接 ref）
         if (!hwDecoder->TransferFrame(
-            hwf,
+            out.get(),
             hwTransferFrame.get()))
         {
-            return nullptr;
+            return DecodeResult::Error;
         }
 
-        return hwTransferFrame.get();
+        // 回读帧交给调用方（GPU 帧 out 自动释放）
+        out.reset(
+            av_frame_clone(
+                hwTransferFrame.get()));
+
+        av_frame_unref(
+            hwTransferFrame.get());
+
+        if (!out)
+        {
+            return DecodeResult::Error;
+        }
+
+        return DecodeResult::Success;
     }
 
     return videoDecoder ?
-        videoDecoder->ReceiveFrame() :
-        nullptr;
+        videoDecoder->ReceiveFrame(out) :
+        DecodeResult::Error;
 }
 
 void Player::TryInitHardwareDecoder(
@@ -3458,11 +3498,14 @@ void Player::VideoDecodeLoop()
                     // 取出所有剩余帧
                     while (true)
                     {
-                        AVFrame* f =
-                            ReceiveVideoFrame();
+                        FramePtr f;
 
-                        if (!f)
+                        DecodeResult r =
+                            ReceiveVideoFrame(f);
+
+                        if (r != DecodeResult::Success)
                         {
+                            // NeedMorePacket / End / Error 均停止冲刷
                             break;
                         }
 
@@ -3473,23 +3516,11 @@ void Player::VideoDecodeLoop()
                         }
 
                         // 输出链（EOF 尾帧同样送编码）
-                        FeedOutputVideo(f);
+                        FeedOutputVideo(f.get());
 
-                        // 克隆一帧入队（内部帧会被复用）
-                        // 8.4：FramePtr 接管克隆帧所有权
-                        FramePtr out(
-                            av_frame_clone(f));
-
-                        av_frame_unref(f);
-
-                        if (!out)
-                        {
-                            break;
-                        }
-
-                        // 失败时 out 作用域结束自动释放
+                        // 失败时 f 作用域结束自动释放
                         videoFrameQueue.Push(
-                            std::move(out),
+                            std::move(f),
                             MAX_VIDEO_FRAMES);
                     }
                 }
@@ -3552,12 +3583,15 @@ void Player::VideoDecodeLoop()
 
         while (true)
         {
-            AVFrame* f =
-                ReceiveVideoFrame();
+            FramePtr f;
 
-            if (!f)
+            DecodeResult r =
+                ReceiveVideoFrame(f);
+
+            if (r != DecodeResult::Success)
             {
-                // 需要更多包，或解码结束
+                // NeedMorePacket（需要继续送包）/
+                // End（解码结束）/ Error（已记录日志）
                 break;
             }
 
@@ -3568,25 +3602,13 @@ void Player::VideoDecodeLoop()
             }
 
             // 输出链（7.4–7.6）：录制 / 推流 / HLS 共享编码器
-            FeedOutputVideo(f);
-
-            // 克隆一帧入队（内部帧会被复用）
-            // 8.4：FramePtr 接管克隆帧所有权
-            FramePtr out(
-                av_frame_clone(f));
-
-            av_frame_unref(f);
-
-            if (!out)
-            {
-                break;
-            }
+            FeedOutputVideo(f.get());
 
             if (!videoFrameQueue.Push(
-                std::move(out),
+                std::move(f),
                 MAX_VIDEO_FRAMES))
             {
-                // 入队被打断（Seek/退出）：out 自动释放
+                // 入队被打断（Seek/退出）：f 自动释放
 
                 // 说明正在 Seek：flush 后等待恢复
                 if (videoFrameQueue.IsInterrupted())
@@ -3675,12 +3697,22 @@ void Player::AudioDecodeLoop()
                 audioDecoder->SendPacket(nullptr);
 
                 // 取出所有剩余帧
-                AVFrame* f = nullptr;
+                FramePtr f;
 
-                while ((f =
-                    audioDecoder->ReceiveFrame()) != nullptr)
+                while (true)
                 {
-                    ProcessAudioFrame(f);
+                    DecodeResult r =
+                        audioDecoder->ReceiveFrame(f);
+
+                    if (r != DecodeResult::Success)
+                    {
+                        break;
+                    }
+
+                    ProcessAudioFrame(f.get());
+
+                    // 帧已消费，释放引用
+                    f.reset();
                 }
             }
 
@@ -3728,12 +3760,22 @@ void Player::AudioDecodeLoop()
         audioDecoder->SendPacket(pkt.get());
 
         // 取出所有解码出的 PCM 帧
-        AVFrame* f = nullptr;
+        FramePtr f;
 
-        while ((f =
-            audioDecoder->ReceiveFrame()) != nullptr)
+        while (true)
         {
-            ProcessAudioFrame(f);
+            DecodeResult r =
+                audioDecoder->ReceiveFrame(f);
+
+            if (r != DecodeResult::Success)
+            {
+                break;
+            }
+
+            ProcessAudioFrame(f.get());
+
+            // 帧已消费，释放引用
+            f.reset();
         }
     }
 

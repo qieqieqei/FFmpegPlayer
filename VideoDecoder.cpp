@@ -157,12 +157,13 @@ bool VideoDecoder::SendPacket(
     return true;
 }
 
-AVFrame* VideoDecoder::ReceiveFrame()
+DecodeResult VideoDecoder::ReceiveFrame(
+    FramePtr& out)
 {
     if (!codecCtx ||
         !frame)
     {
-        return nullptr;
+        return DecodeResult::Error;
     }
 
     int ret =
@@ -170,14 +171,41 @@ AVFrame* VideoDecoder::ReceiveFrame()
             codecCtx.get(),
             frame.get());
 
-    if (ret < 0)
+    if (ret == AVERROR(EAGAIN))
     {
-        // EAGAIN（需要更多包）/ EOF（解码结束）
-        // 都不是错误，返回 nullptr
-        return nullptr;
+        // 需要更多包：不是错误
+        return DecodeResult::NeedMorePacket;
     }
 
-    return frame.get();
+    if (ret == AVERROR_EOF)
+    {
+        // 解码真正结束
+        return DecodeResult::End;
+    }
+
+    if (ret < 0)
+    {
+        ErrorHandler::LogFFmpeg(
+            ErrorTag::Decoder,
+            "avcodec_receive_frame (video)",
+            ret);
+
+        return DecodeResult::Error;
+    }
+
+    // 成功：克隆一帧交给调用方（内部帧复用，
+    // 所有权随 out 转移，调用方负责释放）
+    out.reset(
+        av_frame_clone(frame.get()));
+
+    av_frame_unref(frame.get());
+
+    if (!out)
+    {
+        return DecodeResult::Error;
+    }
+
+    return DecodeResult::Success;
 }
 
 void VideoDecoder::Flush()

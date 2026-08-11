@@ -1,5 +1,8 @@
 #include "Sync/AudioClock.h"
 
+#include <chrono>
+#include <cmath>
+
 AudioClock::AudioClock()
 {
 }
@@ -14,6 +17,11 @@ void AudioClock::Reset(
     this->baseSeconds = baseSeconds;
 
     playedSeconds = 0.0;
+
+    // 8.4：重置墙钟基准（漂移检测重新起算）
+    baseWallSeconds = WallNow();
+
+    wallInitialized = true;
 }
 
 void AudioClock::Update(
@@ -41,4 +49,70 @@ double AudioClock::Get() const
 
     return baseSeconds +
         playedSeconds * speedFactor.load();
+}
+
+double AudioClock::GetWallDrift() const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    if (!wallInitialized)
+    {
+        return 0.0;
+    }
+
+    double mediaTime =
+        baseSeconds +
+        playedSeconds * speedFactor.load();
+
+    return mediaTime -
+        (WallNow() - baseWallSeconds);
+}
+
+double AudioClock::CorrectDrift(
+    double maxNudge)
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    if (!wallInitialized)
+    {
+        return 0.0;
+    }
+
+    double mediaTime =
+        baseSeconds +
+        playedSeconds * speedFactor.load();
+
+    double drift =
+        mediaTime - (WallNow() - baseWallSeconds);
+
+    // 小偏差（10ms 内）不动作，避免抖动
+    if (std::abs(drift) < 0.010)
+    {
+        return 0.0;
+    }
+
+    // 每次修正偏差的 20%，单次不超过 maxNudge（默认 5ms）
+    double nudge = drift * 0.2;
+
+    if (nudge > maxNudge)
+    {
+        nudge = maxNudge;
+    }
+    else if (nudge < -maxNudge)
+    {
+        nudge = -maxNudge;
+    }
+
+    baseSeconds += nudge;
+
+    return nudge;
+}
+
+double AudioClock::WallNow()
+{
+    auto now =
+        std::chrono::steady_clock::now();
+
+    return std::chrono::duration<double>(
+        now.time_since_epoch()).count();
 }

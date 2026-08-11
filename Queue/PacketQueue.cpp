@@ -107,6 +107,8 @@ PacketPtr PacketQueue::Pop(
 
     queue.pop();
 
+    cv.notify_all();
+
     return pkt;
 }
 

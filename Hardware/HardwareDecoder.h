@@ -26,6 +26,7 @@
 #include <string>
 
 #include "Hardware/CUDAContext.h"
+#include "Utils/DecodeResult.h"
 #include "Utils/FFmpegPtr.h"
 
 extern "C" {
@@ -59,9 +60,11 @@ public:
     bool SendPacket(
         AVPacket* pkt);
 
-    // 取出一帧解码结果（内部复用帧，下次调用前有效）
-    // 硬件模式返回 GPU 帧；软解模式返回普通帧
-    AVFrame* ReceiveFrame();
+    // 取出一帧解码结果（8.4，评审七：三态可区分）
+    // 成功时 out 接管一帧：硬件模式为 GPU 帧（format = CUDA/D3D11/…），
+    // 软解模式为普通帧；NeedMorePacket / End / Error 语义同 VideoDecoder
+    DecodeResult ReceiveFrame(
+        FramePtr& out);
 
     // 把硬件帧拷到系统内存帧（dst 由调用方管理）
     // 软解模式下等价于 av_frame_ref
