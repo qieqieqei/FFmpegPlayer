@@ -33,6 +33,14 @@
 - ✅ **丢包统计打通**：NetworkBuffer 丢弃计数增量同步 `NetworkStatistics`（OSD 新增 Net 行显示 `Loss %`），丢包可观测
 - ✅ **可配置指数退避**：`reconnect_backoff_factor`（stream.json，默认 1.0 = 固定间隔，行为不变）；>1.0 开启 `delay * factor^(n-1)` 封顶 30s，长时间断网避免高频重试打服务器
 
+### 直播 / 摄像头低延迟（8.5）
+- ✅ **`CameraInput` 摄像头输入**（`Input/CameraInput.h/.cpp`）：继承 `InputSource`，专门管理 RTSP 摄像头——地址（`Open(url)`）、摄像头参数（`SetConfig` / `SetTransport`：rtsp_transport=tcp 默认）、延迟配置（`SetLatencyMs`：>0 时 `max_delay=latencyMs` 毫秒，0 = 极限低延迟）；恒为直播（`IsLive()`=true，不可 Seek）、支持 Reconnect + 重连计数；工厂 `InputSource::Create` 对 `rtsp://` 自动路由到 CameraInput，其他网络协议仍走 NetworkInput，本地文件走 FileInput
+- ✅ **低延迟打开参数**（直播不能像 MP4 那样缓存）：`CameraInput::BuildOptions` 按需求原样注入 `fflags=nobuffer`（不预读，边收边播）+ `flags=low_delay` + `rtsp_transport=tcp`，再叠加 `max_delay`、`stimeout`/`rw_timeout` 超时、`analyzeduration=1500000`/`probesize=300000` 快速起播，统一传入 `avformat_open_input(ctx, url, nullptr, &opts)`
+- ✅ **解码级 low_delay**：`VideoDecoder::SetLowDelay(bool)` / `HardwareDecoder::SetLowDelay(bool)`（硬件路径 + 软解回退两处）——`avcodec_open2` 传 options 字典 `flags=low_delay`（`AV_CODEC_FLAG_LOW_DELAY`，AVCodecContext 合法选项，真正生效）；Player 直播时自动开启，点播保持默认
+- ✅ **PacketQueue 直播模式（LiveMode）**：`SetLiveMode(enable, timeBase, maxDurationMs)`——直播时 Push 不再因满而阻塞（背压会让 Demux 卡住、延迟无限累积），入队后按队首/队尾 pts 算队列时长，`queue_duration > 500ms`（`live_max_queue_ms` 可配）丢旧包追最新画面；丢包 GOP 感知（沿用 8.4 教训：非关键帧丢到关键帧为止，队头是关键帧则整段清空），带丢包计数（已接入 NetworkStatistics 统计）；直播音频队列已切换到 LiveMode（音频无解码依赖，丢弃安全），直播视频队列在 NetworkBuffer 上叠加了**时长上限**（`SetLiveDurationMs`，与包数上限双保险）
+- ✅ **SyncController 直播策略（LiveClock）**：新增 `Sync/LiveClock.h/.cpp`——直播时 `delay = videoPts - masterTime` 超过阈值（超前默认 100ms / 落后默认 50ms）就丢帧，例：网络延迟 1 秒 → `delay≈1s` 超阈值 → 丢帧 → 下一帧离实时更近 → 循环 → 恢复实时；`NextWaitMs` 直播恒返回 0（不等待，最低延迟），其余情况立即渲染；连续判定 + 冷却防抖与 DropController 一致；`SyncController::SetLiveMode(bool)` 一键切换直播/点播策略，Player `OpenMedia` 按 `demuxer->IsLive()` 自动路由
+- ✅ 新增配置：`live_max_queue_ms`（直播追最新阈值，默认 500）、`camera_latency_ms`（摄像头目标延迟，0 = 极限低延迟，默认 0），stream.json 可配
+
 ### 编码 / 封装 / 推流 / 滤镜（7.x 第二阶段）
 - ✅ 视频编码 `Encoder/VideoEncoder`：libx264 / libx265 / h264_nvenc；直播低延迟（libx264 `tune=zerolatency`，nvenc `preset=ll` + `bf=0`），GOP=2s，输入 YUV420P
 - ✅ 音频编码 `Encoder/AudioEncoder`：AAC / Opus；内部 swr 自动重采样为编码器所需格式（AAC→FLTP）
