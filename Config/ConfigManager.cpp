@@ -897,6 +897,13 @@ void ConfigManager::LoadStream(
     stream.bufferTargetMs =
         GetInt(root, "buffer_target_ms", stream.bufferTargetMs);
 
+    // 8.5：直播队列最大时长 + 摄像头目标延迟
+    stream.liveMaxQueueMs =
+        GetInt(root, "live_max_queue_ms", stream.liveMaxQueueMs);
+
+    stream.cameraLatencyMs =
+        GetInt(root, "camera_latency_ms", stream.cameraLatencyMs);
+
     stream.hardwareDecode =
         GetBool(root, "hardware_decode", stream.hardwareDecode);
 

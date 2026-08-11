@@ -43,6 +43,13 @@ public:
     bool Init(
         AVCodecParameters* codecpar);
 
+    // 8.5：低延迟模式开关。必须在 Init 之前调用；
+    // 开启后 avcodec_open2 传入 flags=low_delay
+    // （AV_CODEC_FLAG_LOW_DELAY，真正的解码级低延迟）。
+    // 直播流开启，点播保持默认。
+    void SetLowDelay(
+        bool enable);
+
     // 送入一个待解码的包（调用者仍需负责释放 pkt）
     bool SendPacket(
         AVPacket* pkt);
@@ -69,4 +76,6 @@ private:
     AVCodecContextPtr codecCtx;   // 视频解码上下文（RAII）
 
     AVFramePtr frame;             // 解码帧（复用，RAII）
+
+    bool lowDelay = false;        // 8.5：解码级低延迟（AV_CODEC_FLAG_LOW_DELAY）
 };

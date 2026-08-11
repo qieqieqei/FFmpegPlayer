@@ -1,6 +1,7 @@
 #include "Input/InputSource.h"
 
 #include "Config/ConfigManager.h"
+#include "Input/CameraInput.h"
 #include "Input/FileInput.h"
 #include "Input/NetworkInput.h"
 #include "Utils/ErrorHandler.h"
@@ -81,9 +82,32 @@ InputSource* InputSource::Create(
     const std::string& url,
     const StreamConfig* cfg)
 {
+    // RTSP 地址优先路由到 CameraInput（8.5）：
+    // 摄像头专用输入，恒为直播，低延迟三件套参数（
+    // fflags=nobuffer / flags=low_delay / rtsp_transport=tcp）
+    if (ConfigManager::ProtocolOf(url) == "rtsp")
+    {
+        CameraInput* input =
+            new CameraInput();
+
+        if (cfg)
+        {
+            input->SetConfig(*cfg);
+
+            // 摄像头目标延迟（camera_latency_ms，0 = 极限低延迟）
+            if (cfg->cameraLatencyMs > 0)
+            {
+                input->SetLatencyMs(
+                    cfg->cameraLatencyMs);
+            }
+        }
+
+        return input;
+    }
+
     if (ConfigManager::IsNetworkUrl(url))
     {
-        // 网络流：NetworkInput（内部包含 RTSP/RTMP/HTTP/HLS 支持）
+        // 其他网络流：NetworkInput（RTMP/HTTP/HLS）
         NetworkInput* input =
             new NetworkInput();
 

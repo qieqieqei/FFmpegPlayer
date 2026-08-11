@@ -67,11 +67,18 @@ struct StreamConfig
     // 长时间断网时避免高频重试打服务器
     double reconnectBackoffFactor = 1.0;    // 指数退避因子（8.4）
 
-    // ---------- 网络缓冲（7.3） ----------
+    // ---------- 网络缓冲（7.3 / 8.5） ----------
 
     int maxBufferPackets = 600;             // 网络缓冲最大包数
 
     int bufferTargetMs = 300;               // 直播目标缓冲时长（毫秒）
+
+    // 8.5：直播队列最大时长（毫秒）。队列积压超过该值就丢旧包
+    // 追最新画面（PacketQueue LiveMode / NetworkBuffer 时长上限）
+    int liveMaxQueueMs = 500;               // 直播追最新阈值（默认 500ms）
+
+    // 8.5：摄像头目标延迟（毫秒）。0 = max_delay=0 极限低延迟（默认）
+    int cameraLatencyMs = 0;                // camera_latency_ms
 
     // ---------- 硬件解码（7.7） ----------
 

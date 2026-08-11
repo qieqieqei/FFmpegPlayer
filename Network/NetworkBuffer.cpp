@@ -1,5 +1,9 @@
 #include "Network/NetworkBuffer.h"
 
+extern "C" {
+#include <libavutil/mathematics.h>
+}
+
 // ============================================================
 // NetworkBuffer - 网络缓冲队列
 // ============================================================
@@ -83,6 +87,9 @@ bool NetworkBuffer::Push(
 
     queue.push_back(std::move(pkt));
 
+    // 8.5：直播时长上限——积压超过阈值丢旧包追最新
+    TrimLiveLocked();
+
     cv.notify_one();
 
     return true;
@@ -165,7 +172,140 @@ bool NetworkBuffer::IsInterrupted() const
     return interrupted.load();
 }
 
+void NetworkBuffer::SetLiveDurationMs(
+    int maxDurationMs,
+    int64_t timeBaseNum,
+    int64_t timeBaseDen)
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    liveDurationMs =
+        maxDurationMs > 0 ? maxDurationMs : 0;
+
+    if (timeBaseDen > 0)
+    {
+        liveTimeBase.num =
+            static_cast<int>(timeBaseNum);
+
+        liveTimeBase.den =
+            static_cast<int>(timeBaseDen);
+    }
+}
+
+int NetworkBuffer::GetLiveDurationMs() const
+{
+    return liveDurationMs;
+}
+
+int64_t NetworkBuffer::GetDurationMs() const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    if (queue.size() < 2)
+    {
+        return 0;
+    }
+
+    int64_t frontTs =
+        queue.front()->pts;
+
+    if (frontTs == AV_NOPTS_VALUE)
+    {
+        frontTs = queue.front()->dts;
+    }
+
+    int64_t backTs =
+        queue.back()->pts;
+
+    if (backTs == AV_NOPTS_VALUE)
+    {
+        backTs = queue.back()->dts;
+    }
+
+    if (frontTs == AV_NOPTS_VALUE ||
+        backTs == AV_NOPTS_VALUE)
+    {
+        return 0;
+    }
+
+    return av_rescale_q(
+        backTs - frontTs,
+        liveTimeBase,
+        AVRational{ 1, 1000 });
+}
+
 int64_t NetworkBuffer::GetDroppedCount() const
 {
     return dropped.load();
+}
+
+void NetworkBuffer::TrimLiveLocked()
+{
+    // 时长上限未开启：不修剪
+    if (liveDurationMs <= 0)
+    {
+        return;
+    }
+
+    // 8.5：直播追最新——队列积压超过阈值丢旧包。
+    // 与 8.4 包数上限共用同一套 GOP 感知策略：
+    //   1) 队头非关键帧：丢到第一个关键帧之前（保留 GOP 起点）
+    //   2) 队头是关键帧：整段丢弃，等下一个关键帧重建
+    while (queue.size() >= 2)
+    {
+        int64_t frontTs =
+            queue.front()->pts;
+
+        if (frontTs == AV_NOPTS_VALUE)
+        {
+            frontTs = queue.front()->dts;
+        }
+
+        int64_t backTs =
+            queue.back()->pts;
+
+        if (backTs == AV_NOPTS_VALUE)
+        {
+            backTs = queue.back()->dts;
+        }
+
+        if (frontTs == AV_NOPTS_VALUE ||
+            backTs == AV_NOPTS_VALUE)
+        {
+            return;
+        }
+
+        int64_t durationMs =
+            av_rescale_q(
+                backTs - frontTs,
+                liveTimeBase,
+                AVRational{ 1, 1000 });
+
+        if (durationMs <= liveDurationMs)
+        {
+            return;
+        }
+
+        if (queue.front()->flags &
+            AV_PKT_FLAG_KEY)
+        {
+            while (!queue.empty())
+            {
+                queue.pop_front();
+
+                dropped.fetch_add(1);
+            }
+
+            break;
+        }
+
+        while (!queue.empty() &&
+            !(queue.front()->flags &
+                AV_PKT_FLAG_KEY))
+        {
+            queue.pop_front();
+
+            dropped.fetch_add(1);
+        }
+    }
 }

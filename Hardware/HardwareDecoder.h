@@ -49,6 +49,12 @@ public:
         const std::string& codecName,
         AVCodecParameters* codecpar);
 
+    // 8.5：低延迟模式开关。必须在 Init 之前调用；
+    // 开启后两处 avcodec_open2（硬件路径 + 软解回退）都传
+    // flags=low_delay（AV_CODEC_FLAG_LOW_DELAY）。
+    void SetLowDelay(
+        bool enable);
+
     // 送入一个待解码的包（调用者仍需负责释放 pkt）
     bool SendPacket(
         AVPacket* pkt);
@@ -100,4 +106,6 @@ private:
     AVPixelFormat hwPixFmt = AV_PIX_FMT_NONE;   // 硬件像素格式
 
     bool hardware = false;                // 是否硬解
+
+    bool lowDelay = false;                // 8.5：解码级低延迟（AV_CODEC_FLAG_LOW_DELAY）
 };

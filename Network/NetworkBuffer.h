@@ -41,6 +41,22 @@ public:
 
     int GetMaxSize() const;
 
+    // ---------- 直播时长上限（8.5） ----------
+
+    // 设置直播队列时长上限（毫秒）。队列积压超过该值就丢旧包
+    // 追最新画面（GOP 感知，与包数上限叠加生效）。
+    //   maxDurationMs <= 0 : 关闭（默认，仅按包数丢）
+    //   timeBaseNum/Den    : 包 time_base（pts 换算秒用，通常取视频流 time_base）
+    void SetLiveDurationMs(
+        int maxDurationMs,
+        int64_t timeBaseNum,
+        int64_t timeBaseDen);
+
+    int GetLiveDurationMs() const;
+
+    // 当前队列时长（毫秒，按队首/队尾 pts 估算；缺 pts 返回 0）
+    int64_t GetDurationMs() const;
+
     // 入队一个 Packet（移动语义，队列接管所有权）。
     // 队列满时：丢弃最旧的包（droppedCount++），新包入队。
     // 返回 true  = 入队成功
@@ -83,4 +99,13 @@ private:
     std::atomic<int> maxSize{ 600 };          // 容量上限
 
     std::atomic<int64_t> dropped{ 0 };        // 丢弃计数
+
+    // ---------- 直播时长上限（8.5，mutex 保护） ----------
+
+    int liveDurationMs = 0;                   // 时长上限（0 = 关闭）
+
+    AVRational liveTimeBase = { 1, 90000 };   // 包时间基
+
+    // 直播时长修剪（调用者必须已持有 mutex）
+    void TrimLiveLocked();
 };

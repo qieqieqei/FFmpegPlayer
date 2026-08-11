@@ -20,6 +20,12 @@ HardwareDecoder::~HardwareDecoder()
     // RAII：codecCtx / frame / framesRef 自动释放
 }
 
+void HardwareDecoder::SetLowDelay(
+    bool enable)
+{
+    lowDelay = enable;
+}
+
 bool HardwareDecoder::Init(
     CUDAContext* cuda,
     const std::string& codecName,
@@ -111,11 +117,25 @@ bool HardwareDecoder::Init(
 
     // ---------- 打开解码器 ----------
 
+    // 8.5：低延迟模式（直播）时 avcodec_open2 传 flags=low_delay
+    AVDictionary* opts = nullptr;
+
+    if (lowDelay)
+    {
+        av_dict_set(
+            &opts,
+            "flags",
+            "low_delay",
+            0);
+    }
+
     ret =
         avcodec_open2(
             codecCtx.get(),
             codec,
-            nullptr);
+            lowDelay ? &opts : nullptr);
+
+    av_dict_free(&opts);
 
     if (ret < 0)
     {
@@ -132,11 +152,25 @@ bool HardwareDecoder::Init(
 
         codecCtx->get_format = nullptr;
 
+        // 8.5：软解回退同样带低延迟选项
+        AVDictionary* fallbackOpts = nullptr;
+
+        if (lowDelay)
+        {
+            av_dict_set(
+                &fallbackOpts,
+                "flags",
+                "low_delay",
+                0);
+        }
+
         ret =
             avcodec_open2(
                 codecCtx.get(),
                 codec,
-                nullptr);
+                lowDelay ? &fallbackOpts : nullptr);
+
+        av_dict_free(&fallbackOpts);
 
         if (ret < 0)
         {

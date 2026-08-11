@@ -14,6 +14,12 @@ VideoDecoder::~VideoDecoder()
     // RAII：FFmpegPtr 自动释放 codecCtx / frame
 }
 
+void VideoDecoder::SetLowDelay(
+    bool enable)
+{
+    lowDelay = enable;
+}
+
 bool VideoDecoder::Init(
     AVCodecParameters* codecpar)
 {
@@ -64,11 +70,27 @@ bool VideoDecoder::Init(
         return false;
     }
 
+    // 8.5：低延迟模式——avcodec_open2 传 flags=low_delay。
+    // AV_CODEC_FLAG_LOW_DELAY 是 AVCodecContext 的合法选项，
+    // 让解码器减少内部缓冲（B 帧重排延迟等），直播追最新画面用。
+    AVDictionary* opts = nullptr;
+
+    if (lowDelay)
+    {
+        av_dict_set(
+            &opts,
+            "flags",
+            "low_delay",
+            0);
+    }
+
     ret =
         avcodec_open2(
             codecCtx.get(),
             codec,
-            nullptr);
+            lowDelay ? &opts : nullptr);
+
+    av_dict_free(&opts);
 
     if (ret < 0)
     {

@@ -162,6 +162,7 @@
     <ClCompile Include="FontManager.cpp" />
     <ClCompile Include="Hardware\CUDAContext.cpp" />
     <ClCompile Include="Hardware\HardwareDecoder.cpp" />
+    <ClCompile Include="Input\CameraInput.cpp" />
     <ClCompile Include="Input\FileInput.cpp" />
     <ClCompile Include="Input\InputSource.cpp" />
     <ClCompile Include="Input\NetworkInput.cpp" />
@@ -188,6 +189,7 @@
     <ClCompile Include="Sync\AudioClock.cpp" />
     <ClCompile Include="Sync\Clock.cpp" />
     <ClCompile Include="Sync\DropController.cpp" />
+    <ClCompile Include="Sync\LiveClock.cpp" />
     <ClCompile Include="Sync\FrameScheduler.cpp" />
     <ClCompile Include="Sync\MasterClock.cpp" />
     <ClCompile Include="Sync\SyncController.cpp" />
@@ -217,6 +219,7 @@
     <ClInclude Include="FontManager.h" />
     <ClInclude Include="Hardware\CUDAContext.h" />
     <ClInclude Include="Hardware\HardwareDecoder.h" />
+    <ClInclude Include="Input\CameraInput.h" />
     <ClInclude Include="Input\FileInput.h" />
     <ClInclude Include="Input\InputSource.h" />
     <ClInclude Include="Input\NetworkInput.h" />
@@ -243,6 +246,7 @@
     <ClInclude Include="Sync\AudioClock.h" />
     <ClInclude Include="Sync\Clock.h" />
     <ClInclude Include="Sync\DropController.h" />
+    <ClInclude Include="Sync\LiveClock.h" />
     <ClInclude Include="Sync\FrameScheduler.h" />
     <ClInclude Include="Sync\MasterClock.h" />
     <ClInclude Include="Sync\SyncController.h" />

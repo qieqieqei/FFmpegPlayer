@@ -21,12 +21,19 @@
 //   - MasterClock    主时钟选择器（音频优先，无音频用视频）
 //   - FrameScheduler 帧调度器（延迟计算 / 钳制 / 分片等待）
 //   - DropController 丢帧控制器（丢帧判定 + 统计）
+//
+// 8.5 直播模式（LiveClock）：
+//   Player 打开直播流后调用 SetLiveMode(true)：
+//   - ShouldDrop 交给 LiveClock（超前 / 落后都丢，追最新画面）
+//   - NextWaitMs 恒返回 0（直播不等待，最低延迟）
+//   点播保持原策略（PTS 正常对齐，等待 + 仅落后丢帧）
 // ============================================================
 
 #include "Sync/VideoClock.h"
 #include "Sync/MasterClock.h"
 #include "Sync/FrameScheduler.h"
 #include "Sync/DropController.h"
+#include "Sync/LiveClock.h"
 
 class AudioClock;
 
@@ -66,8 +73,24 @@ public:
         double frameDuration) const;
 
     // 分片等待：返回本次应 sleep 的毫秒数
+    // 直播模式恒返回 0（不等待，最低延迟）
     int NextWaitMs(
         double delay) const;
+
+    // ---------- 直播模式（8.5） ----------
+
+    // 切换直播 / 点播同步策略（Player 在媒体打开时调用）
+    //   live = true : 直播策略——ShouldDrop 交给 LiveClock，
+    //                 超前 / 落后都丢帧；NextWaitMs 恒 0
+    //   live = false: 点播策略——PTS 正常对齐（原行为）
+    void SetLiveMode(
+        bool live);
+
+    // 是否直播模式
+    bool IsLiveMode() const;
+
+    // 直播时钟访问（调试 / 进阶使用）
+    LiveClock* GetLiveClock();
 
     // ---------- 丢帧控制 ----------
 
@@ -114,5 +137,9 @@ private:
 
     FrameScheduler frameScheduler;  // 帧调度器
 
-    DropController dropController;  // 丢帧控制器
+    DropController dropController;  // 丢帧控制器（点播）
+
+    LiveClock liveClock;            // 直播丢帧控制器（8.5）
+
+    bool liveMode = false;          // 直播模式（8.5）
 };

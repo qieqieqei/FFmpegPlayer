@@ -269,11 +269,20 @@ bool Player::OpenMedia(
     useNetBuffer =
         demuxer->IsLive();
 
+    // 8.5：同步策略切直播 / 点播（LiveClock vs DropController）
+    if (syncController)
+    {
+        syncController->SetLiveMode(
+            useNetBuffer);
+    }
+
     if (useNetBuffer)
     {
         int cap = 600;
 
         int targetMs = 300;
+
+        int liveQueueMs = 500;   // 8.5：直播追最新阈值（默认 500ms）
 
         if (configManager)
         {
@@ -283,13 +292,47 @@ bool Player::OpenMedia(
             cap = sc.maxBufferPackets;
 
             targetMs = sc.bufferTargetMs;
+
+            liveQueueMs = sc.liveMaxQueueMs;
         }
 
         videoNetBuffer.SetMaxSize(cap);
 
-        // 音频包更小更密，上限减半（至少 30 包）
-        audioNetBuffer.SetMaxSize(
-            std::max(30, cap / 2));
+        // 8.5：视频队列时长上限——积压超过 liveQueueMs 丢旧包追最新
+        // （与包数上限叠加；GOP 感知，不撕裂解码链）
+        AVStream* liveVStream =
+            demuxer->GetVideoStream();
+
+        if (liveVStream)
+        {
+            videoNetBuffer.SetLiveDurationMs(
+                liveQueueMs,
+                liveVStream->time_base.num,
+                liveVStream->time_base.den);
+        }
+
+        // 8.5：音频队列切 LiveMode（PacketQueue 直播模式）：
+        // Push 不阻塞，积压超过 liveQueueMs 丢旧包；
+        // 音频帧无解码依赖，丢弃安全
+        AVStream* liveAStream =
+            demuxer->GetAudioStream();
+
+        if (liveAStream)
+        {
+            audioPacketQueue.SetLiveMode(
+                true,
+                liveAStream->time_base.num,
+                liveAStream->time_base.den,
+                liveQueueMs);
+        }
+        else
+        {
+            audioPacketQueue.SetLiveMode(
+                true,
+                1,
+                90000,
+                liveQueueMs);
+        }
 
         // 直播目标缓冲（覆盖默认 300ms，按配置）
         if (bufferController)
@@ -303,6 +346,8 @@ bool Player::OpenMedia(
             << "cap=" << cap
             << " target=" << targetMs
             << "ms"
+            << " liveQueue=" << liveQueueMs
+            << "ms (drop old to chase latest)"
             << std::endl;
     }
 
@@ -349,6 +394,10 @@ bool Player::OpenMedia(
 
     videoDecoder =
         std::make_unique<VideoDecoder>();
+
+    // 8.5：直播解码级低延迟（avcodec_open2 传 flags=low_delay）
+    videoDecoder->SetLowDelay(
+        useNetBuffer);
 
     if (!videoDecoder->Init(
         vStream->codecpar))
@@ -996,8 +1045,11 @@ bool Player::Run()
             }
 
             // 视频超前：等待（分片等待，保持事件响应）
+            // 8.5：直播模式不等待——延迟超过阈值已由 LiveClock 丢帧，
+            //      阈值内的轻微超前直接渲染（追最新，最低延迟）
             while (delay > 0.0 &&
-                !quit)
+                !quit &&
+                !syncController->IsLiveMode())
             {
                 HandleEvent(
                     quit,
@@ -1883,36 +1935,33 @@ bool Player::PushVideoPacket(
 bool Player::PushAudioPacket(
     PacketPtr&& pkt)
 {
-    if (useNetBuffer)
+    // 8.5：直播时 audioPacketQueue 处于 LiveMode——
+    // Push 不阻塞，积压超过 live_max_queue_ms 丢旧包；
+    // 点播时保持满阻塞背压。两种模式共用一个队列。
+    bool ok =
+        audioPacketQueue.Push(
+            std::move(pkt),
+            MAX_AUDIO_PACKETS);
+
+    // 8.4：同步丢包统计（LiveMode 丢旧包可能一次丢多个）
+    if (networkStatistics)
     {
-        bool ok =
-            audioNetBuffer.Push(
-                std::move(pkt));
+        int64_t dropped =
+            audioPacketQueue.GetDroppedCount();
 
-        // 8.4：同步丢包统计（GOP 段丢包可能一次丢多个）
-        if (networkStatistics)
+        int64_t delta =
+            dropped - lastAudioDropped;
+
+        if (delta > 0)
         {
-            int64_t dropped =
-                audioNetBuffer.GetDroppedCount();
+            networkStatistics->OnPacketDropped(
+                delta);
 
-            int64_t delta =
-                dropped - lastAudioDropped;
-
-            if (delta > 0)
-            {
-                networkStatistics->OnPacketDropped(
-                    delta);
-
-                lastAudioDropped = dropped;
-            }
+            lastAudioDropped = dropped;
         }
-
-        return ok;
     }
 
-    return audioPacketQueue.Push(
-        std::move(pkt),
-        MAX_AUDIO_PACKETS);
+    return ok;
 }
 
 PacketPtr Player::PopVideoPacket(
@@ -1929,11 +1978,7 @@ PacketPtr Player::PopVideoPacket(
 PacketPtr Player::PopAudioPacket(
     int timeoutMs)
 {
-    if (useNetBuffer)
-    {
-        return audioNetBuffer.Pop(timeoutMs);
-    }
-
+    // 8.5：直播/点播统一走 PacketQueue（LiveMode 内部处理丢旧包）
     return audioPacketQueue.Pop(timeoutMs);
 }
 
@@ -1949,11 +1994,6 @@ bool Player::IsVideoQueueInterrupted() const
 
 bool Player::IsAudioQueueInterrupted() const
 {
-    if (useNetBuffer)
-    {
-        return audioNetBuffer.IsInterrupted();
-    }
-
     return audioPacketQueue.IsInterrupted();
 }
 
@@ -1969,11 +2009,6 @@ int Player::GetVideoQueueSize() const
 
 int Player::GetAudioQueueSize() const
 {
-    if (useNetBuffer)
-    {
-        return audioNetBuffer.Size();
-    }
-
     return audioPacketQueue.Size();
 }
 
@@ -3044,8 +3079,6 @@ void Player::StopThreads()
     // 直播队列（NetworkBuffer）同样打断
     videoNetBuffer.Interrupt();
 
-    audioNetBuffer.Interrupt();
-
     // 打断网络流的阻塞读取（av_read_frame 会立即返回）
     // 否则 RTSP/HTTP 断线或超时时 join 会卡死
     if (demuxer)
@@ -3347,6 +3380,10 @@ void Player::TryInitHardwareDecoder(
 
     hwDecoder =
         std::make_unique<HardwareDecoder>();
+
+    // 8.5：直播解码级低延迟（硬件 + 软解回退两处 avcodec_open2）
+    hwDecoder->SetLowDelay(
+        useNetBuffer);
 
     if (!hwDecoder->Init(
         cudaContext.get(),
@@ -3856,11 +3893,14 @@ void Player::ReleaseMedia()
     // 直播队列（NetworkBuffer）同样清空 + 复位
     videoNetBuffer.Clear();
 
-    audioNetBuffer.Clear();
-
     videoNetBuffer.ResetInterrupt();
 
-    audioNetBuffer.ResetInterrupt();
+    // 8.5：音频队列 LiveMode 复位（直播 -> 点播切换时清除状态）
+    audioPacketQueue.SetLiveMode(
+        false,
+        1,
+        90000,
+        500);
 
     // ---------- 字幕（媒体相关） ----------
 

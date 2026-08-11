@@ -521,11 +521,10 @@ private:
 
     PacketQueue videoPacketQueue;   // 视频包队列（点播：满阻塞背压）
 
-    PacketQueue audioPacketQueue;   // 音频包队列（点播：满阻塞背压）
+    PacketQueue audioPacketQueue;   // 音频包队列（点播：满阻塞背压；
+                                    // 8.5 直播：LiveMode 追最新，丢旧包）
 
-    NetworkBuffer videoNetBuffer;   // 视频包队列（直播：满丢最旧，低延迟 7.3）
-
-    NetworkBuffer audioNetBuffer;   // 音频包队列（直播：满丢最旧）
+    NetworkBuffer videoNetBuffer;   // 视频包队列（直播：满丢最旧 + 时长上限，低延迟 7.3/8.5）
 
     bool useNetBuffer = false;      // 直播流：Demux<->Decode 走 NetworkBuffer
 
