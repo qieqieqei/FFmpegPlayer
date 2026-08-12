@@ -196,6 +196,18 @@ private:
 
     std::atomic<bool> buffering{ false };
 
+    // ---------- 9.1：饥饿判定（原子量） ----------
+
+    // 最后数据到达时间（毫秒，steady_clock 纪元）
+    std::atomic<int64_t> lastDataMs{ 0 };
+
+    // 是否已收到过数据（false = 尚未开始收流）
+    std::atomic<bool> haveLastData{ false };
+
+    // 持续无新数据到达超过该时长才判定缓冲饥饿
+    // （避免 live 模式视频包瞬时消费导致队列瞬时空的误报）
+    static constexpr int64_t BUFFER_STALL_MS = 500;
+
     // ---------- 9.0：抖动 / 延迟分量（mutex 保护） ----------
 
     std::chrono::steady_clock::time_point lastArrival;

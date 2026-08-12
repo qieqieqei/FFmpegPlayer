@@ -44,6 +44,11 @@ void NetworkStatistics::Reset()
 
     buffering.store(false);
 
+    // 9.1：饥饿判定复位
+    lastDataMs.store(0);
+
+    haveLastData.store(false);
+
     // 9.0 状态
     haveLastArrival = false;
 
@@ -91,6 +96,13 @@ void NetworkStatistics::OnPacketReceived(
     windowPackets++;
 
     windowBytes += bytes;
+
+    // 9.1：记录最后数据到达时间（饥饿判定用）
+    lastDataMs.store(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+
+    haveLastData.store(true);
 
     // 9.0：到达间隔 -> 抖动（EWMA）
     UpdateJitterLocked();
@@ -205,8 +217,7 @@ void NetworkStatistics::SetBufferLevel(
 
     bufferMax.store(maxPackets);
 
-    // 缓冲为空：视为饥饿（等待网络数据）
-    buffering.store(packets <= 0);
+    // 缓冲为空：仅保留水位显示；饥饿判定已移至 IsBuffering（时间窗，9.1）
 }
 
 void NetworkStatistics::SetLatencyMs(
@@ -291,7 +302,19 @@ int NetworkStatistics::GetLatencyMs() const
 
 bool NetworkStatistics::IsBuffering() const
 {
-    return buffering.load();
+    // 9.1：饥饿 = 持续 BUFFER_STALL_MS 无新数据到达。
+    // live 模式视频包瞬时消费，队列瞬间为空是常态，不能以队列深度判定。
+    if (!haveLastData.load())
+    {
+        // 尚未收到任何数据（启动阶段）：不算饥饿
+        return false;
+    }
+
+    const int64_t nowMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+
+    return nowMs - lastDataMs.load() > BUFFER_STALL_MS;
 }
 
 // ============================================================
