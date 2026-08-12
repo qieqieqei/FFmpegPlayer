@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <ctime>
+#include <chrono>
 #include <filesystem>
 
 #include "Network/StreamMonitor.h"
@@ -174,6 +175,13 @@ bool Player::Init(
     bufferController =
         std::make_unique<BufferController>();
 
+    // 9.0：延迟估算器 + 自适应缓冲控制器
+    latencyEstimator =
+        std::make_unique<LatencyEstimator>();
+
+    adaptiveBuffer =
+        std::make_unique<AdaptiveBufferController>();
+
     // 流媒体监控（7.9）：网络流健康巡检 + 告警
     streamMonitor =
         std::make_unique<StreamMonitor>();
@@ -276,6 +284,91 @@ bool Player::OpenMedia(
             useNetBuffer);
     }
 
+    // 9.0：按 stream.json 配置直播延迟追帧档位
+    if (syncController && configManager)
+    {
+        const StreamConfig& sc =
+            configManager->GetStreamConfig();
+
+        LiveLatencyController* llc =
+            syncController->GetLiveLatencyController();
+
+        if (llc)
+        {
+            llc->SetTargetLatencyMs(
+                sc.chaseTargetLatencyMs);
+
+            llc->SetMinLatencyMs(
+                sc.chaseMinLatencyMs);
+
+            llc->SetMaxLatencyMs(
+                sc.chaseMaxLatencyMs);
+
+            llc->SetChaseThresholdLightMs(
+                sc.chaseThresholdLightMs);
+
+            llc->SetChaseThresholdMediumMs(
+                sc.chaseThresholdMediumMs);
+
+            llc->SetChaseThresholdHeavyMs(
+                sc.chaseThresholdHeavyMs);
+
+            llc->SetChaseThresholdAggressiveMs(
+                sc.chaseThresholdAggressiveMs);
+
+            llc->SetChaseSpeedLight(
+                sc.chaseSpeedLight);
+
+            llc->SetChaseSpeedMedium(
+                sc.chaseSpeedMedium);
+
+            llc->SetChaseSpeedHeavy(
+                sc.chaseSpeedHeavy);
+
+            llc->SetChaseSpeedAggressive(
+                sc.chaseSpeedAggressive);
+
+            llc->SetMaxChaseStep(
+                sc.chaseMaxStep);
+
+            llc->SetHysteresisMs(
+                sc.chaseHysteresisMs);
+
+            llc->SetDropCooldownMs(
+                sc.chaseDropCooldownMs);
+
+            llc->SetDropConsecutive(
+                sc.chaseDropConsecutive);
+        }
+    }
+
+    // 9.0：自适应缓冲配置（网络质量 -> 动态缓冲目标）
+    if (adaptiveBuffer && configManager)
+    {
+        const StreamConfig& sc =
+            configManager->GetStreamConfig();
+
+        adaptiveBuffer->SetMinBufferMs(
+            sc.adaptiveMinBufferMs);
+
+        adaptiveBuffer->SetMaxBufferMs(
+            sc.adaptiveMaxBufferMs);
+
+        adaptiveBuffer->SetJitterSmoothMs(
+            sc.adaptiveJitterSmoothMs);
+
+        adaptiveBuffer->SetJitterHeavyMs(
+            sc.adaptiveJitterHeavyMs);
+
+        adaptiveBuffer->SetLossThresholdPercent(
+            sc.adaptiveLossThreshold);
+
+        adaptiveBuffer->SetMaxStepMs(
+            sc.adaptiveMaxStepMs);
+
+        adaptiveBuffer->Reset();
+    }
+
     if (useNetBuffer)
     {
         int cap = 600;
@@ -309,6 +402,19 @@ bool Player::OpenMedia(
                 liveQueueMs,
                 liveVStream->time_base.num,
                 liveVStream->time_base.den);
+
+            // 9.0：记录 time_base（自适应缓冲调整时长上限用）
+            liveVStreamNum =
+                liveVStream->time_base.num;
+
+            liveVStreamDen =
+                liveVStream->time_base.den;
+        }
+        else
+        {
+            liveVStreamNum = 0;
+
+            liveVStreamDen = 0;
         }
 
         // 8.5：音频队列切 LiveMode（PacketQueue 直播模式）：
@@ -354,6 +460,12 @@ bool Player::OpenMedia(
     if (networkStatistics)
     {
         networkStatistics->Reset();
+    }
+
+    // 9.0：延迟估算器复位
+    if (latencyEstimator)
+    {
+        latencyEstimator->Reset();
     }
 
     // 流媒体监控：切换媒体时复位告警 / 活性计时
@@ -564,6 +676,10 @@ bool Player::OpenMedia(
 
         // 恢复用户设置的速度 / 音量
         speedController->SetSpeed(playbackSpeed);
+
+        // 9.0：直播/点播模式（点播时追帧倍速不生效）
+        speedController->SetLiveMode(
+            useNetBuffer);
 
         audioDevice->SetSpeedFactor(playbackSpeed);
 
@@ -1051,7 +1167,41 @@ bool Player::Run()
                     pts,
                     videoFrameDuration);
 
-            if (syncController->ShouldDrop(delay))
+            // 9.0：直播延迟追帧——每帧更新延迟状态，输出追帧倍速
+            // 并应用（有效速度 = 用户倍速 × 追帧倍速）
+            if (useNetBuffer &&
+                latencyEstimator &&
+                syncController &&
+                speedController)
+            {
+                syncController->UpdateLiveLatency(
+                    latencyEstimator->GetEndToEndLatencyMs(),
+                    latencyEstimator->GetBufferLatencyMs(),
+                    latencyEstimator->GetJitterMs(),
+                    (syncController->GetVideoClockTime() -
+                     syncController->GetMasterTime()) *
+                        1000.0);
+
+                speedController->SetChaseSpeed(
+                    syncController->GetChaseSpeed());
+
+                // 音频主时钟按有效速度推进（追帧时轻微加速）
+                if (audioDevice)
+                {
+                    audioDevice->SetSpeedFactor(
+                        speedController->GetEffectiveSpeed());
+                }
+            }
+
+            // 9.0：延迟级丢帧——时钟级 A/V 丢帧之外，
+            // 延迟积压超过重度档且连续建议 + 冷却时才丢
+            bool dropForLatency =
+                useNetBuffer &&
+                syncController &&
+                syncController->ShouldDropForLatency();
+
+            if (syncController->ShouldDrop(delay) ||
+                dropForLatency)
             {
                 // 视频落后：丢帧追赶（DropController 防抖）
                 syncController->OnFrameDropped();
@@ -1133,6 +1283,12 @@ bool Player::Run()
             networkStatistics->OnFrameRendered();
         }
 
+        // 9.0：延迟估算——帧渲染时刻
+        if (latencyEstimator)
+        {
+            latencyEstimator->OnFrameRendered(pts);
+        }
+
         // 渲染心跳（Debug 级别：默认不打印，-v 开启）
         Logger::Debug()
             << "[Player] Render frame pts : "
@@ -1158,6 +1314,54 @@ bool Player::Run()
             Logger::Info()
                 << "[Player] Network buffering..."
                 << std::endl;
+        }
+
+        // 9.0：自适应缓冲——按网络质量（抖动/丢包）动态调整
+        // 队列时长上限与缓冲目标（约每秒一次）
+        if (useNetBuffer &&
+            adaptiveBuffer &&
+            latencyEstimator &&
+            networkStatistics &&
+            liveVStreamDen > 0)
+        {
+            static int adaptiveTick = 0;
+
+            if (++adaptiveTick >= 60)
+            {
+                adaptiveTick = 0;
+
+                adaptiveBuffer->Update(
+                    latencyEstimator->GetJitterMs(),
+                    networkStatistics->GetPacketLossPercent(),
+                    networkStatistics->GetThroughputKbps());
+
+                int targetMs =
+                    adaptiveBuffer->GetTargetBufferMs();
+
+                videoNetBuffer.SetLiveDurationMs(
+                    targetMs,
+                    liveVStreamNum,
+                    liveVStreamDen);
+
+                if (bufferController)
+                {
+                    bufferController->SetTargetBufferMs(
+                        targetMs);
+                }
+            }
+        }
+
+        // 9.0：卡顿统计（缓冲饥饿进入 / 恢复）
+        if (useNetBuffer && networkStatistics)
+        {
+            if (networkStatistics->IsBuffering())
+            {
+                networkStatistics->OnStallStart();
+            }
+            else
+            {
+                networkStatistics->OnStallEnd();
+            }
         }
     }
 
@@ -1900,9 +2104,33 @@ void Player::UpdateStatistics()
     bufferController->Update(
         bufferedMs);
 
-    // 延迟估算：近似等于缓冲时长（真实端到端延迟需 RTCP，后续实现）
-    networkStatistics->SetLatencyMs(
-        static_cast<int>(bufferedMs));
+    // 9.0：延迟估算分量 -> 统计
+    // （端到端 = 网络估算 3×jitter + 缓冲 + 解码 + 渲染）
+    if (latencyEstimator)
+    {
+        latencyEstimator->SetBufferLatencyMs(
+            bufferedMs);
+
+        networkStatistics->SetDecodeLatencyMs(
+            latencyEstimator->GetDecodeLatencyMs());
+
+        networkStatistics->SetRenderLatencyMs(
+            latencyEstimator->GetRenderLatencyMs());
+
+        networkStatistics->SetBufferLatencyMs(
+            latencyEstimator->GetBufferLatencyMs());
+
+        // 延迟显示：优先估算组装值
+        networkStatistics->SetLatencyMs(
+            static_cast<int>(
+                latencyEstimator->GetEndToEndLatencyMs()));
+    }
+    else
+    {
+        // 兼容旧行为：延迟近似等于缓冲时长
+        networkStatistics->SetLatencyMs(
+            static_cast<int>(bufferedMs));
+    }
 
     // 流媒体监控：仅网络流巡检（内部按 1s 节流）
     if (streamMonitor &&
@@ -3226,6 +3454,14 @@ void Player::DemuxLoop()
                 pkt->size);
         }
 
+        // 9.0：延迟估算——记录包到达时刻（抖动 / 网络延迟）
+        if (latencyEstimator)
+        {
+            latencyEstimator->OnPacket(
+                pkt->pts,
+                std::chrono::steady_clock::now());
+        }
+
         if (pkt->stream_index ==
             demuxer->GetVideoIndex())
         {
@@ -3515,6 +3751,13 @@ void Player::VideoDecodeLoop()
                             statistics->OnFrameDecoded();
                         }
 
+                        // 9.0：延迟估算——帧解码时刻（EOF 尾帧同样记录）
+                        if (latencyEstimator)
+                        {
+                            latencyEstimator->OnFrameDecoded(
+                                GetFramePts(f.get()));
+                        }
+
                         // 输出链（EOF 尾帧同样送编码）
                         FeedOutputVideo(f.get());
 
@@ -3599,6 +3842,13 @@ void Player::VideoDecodeLoop()
             if (statistics)
             {
                 statistics->OnFrameDecoded();
+            }
+
+            // 9.0：延迟估算——帧解码时刻
+            if (latencyEstimator)
+            {
+                latencyEstimator->OnFrameDecoded(
+                    GetFramePts(f.get()));
             }
 
             // 输出链（7.4–7.6）：录制 / 推流 / HLS 共享编码器
@@ -3943,6 +4193,21 @@ void Player::ReleaseMedia()
         1,
         90000,
         500);
+
+    // 9.0：延迟估算 / 自适应缓冲复位（切换媒体）
+    if (latencyEstimator)
+    {
+        latencyEstimator->Reset();
+    }
+
+    if (adaptiveBuffer)
+    {
+        adaptiveBuffer->Reset();
+    }
+
+    liveVStreamNum = 0;
+
+    liveVStreamDen = 0;
 
     // ---------- 字幕（媒体相关） ----------
 

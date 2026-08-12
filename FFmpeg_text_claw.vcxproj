@@ -86,6 +86,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -103,6 +104,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -119,7 +121,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>D:\FFmpeg\lib;D:\SDL2\lib\x64;D:\library\SDL2_tff\SDL2_ttf-2.24.0\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>avcodec.lib;avformat.lib;avutil.lib;swscale.lib;swresample.lib;avfilter.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>avcodec.lib;avformat.lib;avutil.lib;swscale.lib;swresample.lib;avfilter.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -140,7 +142,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>D:\FFmpeg\lib;D:\SDL2\lib\x64;D:\library\SDL2_tff\SDL2_ttf-2.24.0\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>avcodec.lib;avformat.lib;avutil.lib;swscale.lib;swresample.lib;avfilter.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>avcodec.lib;avformat.lib;avutil.lib;swscale.lib;swresample.lib;avfilter.lib;SDL2.lib;SDL2main.lib;SDL2_ttf.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -154,6 +156,7 @@
     <ClCompile Include="Config\ConfigManager.cpp" />
     <ClCompile Include="Demuxer.cpp" />
     <ClCompile Include="Encoder\AudioEncoder.cpp" />
+    <ClCompile Include="Encoder\EncoderProfile.cpp" />
     <ClCompile Include="Encoder\VideoEncoder.cpp" />
     <ClCompile Include="Event.cpp" />
     <ClCompile Include="Filter\AudioFilter.cpp" />
@@ -172,13 +175,17 @@
     <ClCompile Include="Muxer\HLSMuxer.cpp" />
     <ClCompile Include="Muxer\Muxer.cpp" />
     <ClCompile Include="Network\BufferController.cpp" />
+    <ClCompile Include="Network\AdaptiveBufferController.cpp" />
+    <ClCompile Include="Network\LatencyEstimator.cpp" />
     <ClCompile Include="Network\NetworkBuffer.cpp" />
     <ClCompile Include="Network\NetworkStatistics.cpp" />
+    <ClCompile Include="Network\EndpointSelector.cpp" />
     <ClCompile Include="Network\RTMPPublisher.cpp" />
     <ClCompile Include="Network\StreamMonitor.cpp" />
     <ClCompile Include="OSDManager.cpp" />
     <ClCompile Include="Player.cpp" />
     <ClCompile Include="Playlist\PlaylistManager.cpp" />
+    <ClCompile Include="Protocol\MiniSDP.cpp" />
     <ClCompile Include="Queue\FrameQueue.cpp" />
     <ClCompile Include="Queue\PacketQueue.cpp" />
     <ClCompile Include="Renderer.cpp" />
@@ -190,10 +197,15 @@
     <ClCompile Include="Sync\Clock.cpp" />
     <ClCompile Include="Sync\DropController.cpp" />
     <ClCompile Include="Sync\LiveClock.cpp" />
+    <ClCompile Include="Sync\LiveLatencyController.cpp" />
+    <ClCompile Include="Sync\PlaybackRateController.cpp" />
     <ClCompile Include="Sync\FrameScheduler.cpp" />
     <ClCompile Include="Sync\MasterClock.cpp" />
     <ClCompile Include="Sync\SyncController.cpp" />
     <ClCompile Include="Sync\VideoClock.cpp" />
+    <ClCompile Include="Transport\JitterBuffer.cpp" />
+    <ClCompile Include="Transport\PacketReorderBuffer.cpp" />
+    <ClCompile Include="Transport\UdpTransport.cpp" />
     <ClCompile Include="Utils\ErrorHandler.cpp" />
     <ClCompile Include="Utils\Logger.cpp" />
     <ClCompile Include="VideoDecoder.cpp" />
@@ -211,6 +223,7 @@
     <ClInclude Include="Config\StreamConfig.h" />
     <ClInclude Include="Demuxer.h" />
     <ClInclude Include="Encoder\AudioEncoder.h" />
+    <ClInclude Include="Encoder\EncoderProfile.h" />
     <ClInclude Include="Encoder\VideoEncoder.h" />
     <ClInclude Include="Event.h" />
     <ClInclude Include="Filter\AudioFilter.h" />
@@ -228,14 +241,18 @@
     <ClInclude Include="Muxer\HLSMuxer.h" />
     <ClInclude Include="Muxer\Muxer.h" />
     <ClInclude Include="Network\BufferController.h" />
+    <ClInclude Include="Network\AdaptiveBufferController.h" />
+    <ClInclude Include="Network\LatencyEstimator.h" />
     <ClInclude Include="Network\NetworkBuffer.h" />
     <ClInclude Include="Network\NetworkStatistics.h" />
+    <ClInclude Include="Network\EndpointSelector.h" />
     <ClInclude Include="Network\RTMPPublisher.h" />
     <ClInclude Include="Network\StreamMonitor.h" />
     <ClInclude Include="OSDManager.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="PlayerState.h" />
     <ClInclude Include="Playlist\PlaylistManager.h" />
+    <ClInclude Include="Protocol\MiniSDP.h" />
     <ClInclude Include="Queue\FrameQueue.h" />
     <ClInclude Include="Queue\PacketQueue.h" />
     <ClInclude Include="Renderer.h" />
@@ -247,10 +264,16 @@
     <ClInclude Include="Sync\Clock.h" />
     <ClInclude Include="Sync\DropController.h" />
     <ClInclude Include="Sync\LiveClock.h" />
+    <ClInclude Include="Sync\LiveLatencyController.h" />
+    <ClInclude Include="Sync\PlaybackRateController.h" />
     <ClInclude Include="Sync\FrameScheduler.h" />
     <ClInclude Include="Sync\MasterClock.h" />
     <ClInclude Include="Sync\SyncController.h" />
     <ClInclude Include="Sync\VideoClock.h" />
+    <ClInclude Include="Transport\IMediaTransport.h" />
+    <ClInclude Include="Transport\JitterBuffer.h" />
+    <ClInclude Include="Transport\PacketReorderBuffer.h" />
+    <ClInclude Include="Transport\UdpTransport.h" />
     <ClInclude Include="Utils\ErrorHandler.h" />
     <ClInclude Include="Utils\FFmpegPtr.h" />
     <ClInclude Include="Utils\Logger.h" />

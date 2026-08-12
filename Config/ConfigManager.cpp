@@ -904,6 +904,73 @@ void ConfigManager::LoadStream(
     stream.cameraLatencyMs =
         GetInt(root, "camera_latency_ms", stream.cameraLatencyMs);
 
+    // ---------- 9.0：直播延迟追帧 ----------
+
+    stream.chaseTargetLatencyMs =
+        GetInt(root, "chase_target_latency_ms", stream.chaseTargetLatencyMs);
+
+    stream.chaseMinLatencyMs =
+        GetInt(root, "chase_min_latency_ms", stream.chaseMinLatencyMs);
+
+    stream.chaseMaxLatencyMs =
+        GetInt(root, "chase_max_latency_ms", stream.chaseMaxLatencyMs);
+
+    stream.chaseThresholdLightMs =
+        GetInt(root, "chase_threshold_light_ms", stream.chaseThresholdLightMs);
+
+    stream.chaseThresholdMediumMs =
+        GetInt(root, "chase_threshold_medium_ms", stream.chaseThresholdMediumMs);
+
+    stream.chaseThresholdHeavyMs =
+        GetInt(root, "chase_threshold_heavy_ms", stream.chaseThresholdHeavyMs);
+
+    stream.chaseThresholdAggressiveMs =
+        GetInt(root, "chase_threshold_aggressive_ms", stream.chaseThresholdAggressiveMs);
+
+    stream.chaseSpeedLight =
+        GetNumber(root, "chase_speed_light", stream.chaseSpeedLight);
+
+    stream.chaseSpeedMedium =
+        GetNumber(root, "chase_speed_medium", stream.chaseSpeedMedium);
+
+    stream.chaseSpeedHeavy =
+        GetNumber(root, "chase_speed_heavy", stream.chaseSpeedHeavy);
+
+    stream.chaseSpeedAggressive =
+        GetNumber(root, "chase_speed_aggressive", stream.chaseSpeedAggressive);
+
+    stream.chaseMaxStep =
+        GetNumber(root, "chase_max_step", stream.chaseMaxStep);
+
+    stream.chaseHysteresisMs =
+        GetNumber(root, "chase_hysteresis_ms", stream.chaseHysteresisMs);
+
+    stream.chaseDropCooldownMs =
+        GetNumber(root, "chase_drop_cooldown_ms", stream.chaseDropCooldownMs);
+
+    stream.chaseDropConsecutive =
+        GetInt(root, "chase_drop_consecutive", stream.chaseDropConsecutive);
+
+    // ---------- 9.0：自适应缓冲 ----------
+
+    stream.adaptiveMinBufferMs =
+        GetInt(root, "adaptive_min_buffer_ms", stream.adaptiveMinBufferMs);
+
+    stream.adaptiveMaxBufferMs =
+        GetInt(root, "adaptive_max_buffer_ms", stream.adaptiveMaxBufferMs);
+
+    stream.adaptiveJitterSmoothMs =
+        GetNumber(root, "adaptive_jitter_smooth_ms", stream.adaptiveJitterSmoothMs);
+
+    stream.adaptiveJitterHeavyMs =
+        GetNumber(root, "adaptive_jitter_heavy_ms", stream.adaptiveJitterHeavyMs);
+
+    stream.adaptiveLossThreshold =
+        GetNumber(root, "adaptive_loss_threshold", stream.adaptiveLossThreshold);
+
+    stream.adaptiveMaxStepMs =
+        GetInt(root, "adaptive_max_step_ms", stream.adaptiveMaxStepMs);
+
     stream.hardwareDecode =
         GetBool(root, "hardware_decode", stream.hardwareDecode);
 

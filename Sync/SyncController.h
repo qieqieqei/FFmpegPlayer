@@ -34,6 +34,7 @@
 #include "Sync/FrameScheduler.h"
 #include "Sync/DropController.h"
 #include "Sync/LiveClock.h"
+#include "Sync/LiveLatencyController.h"
 
 class AudioClock;
 
@@ -97,6 +98,42 @@ public:
     // 直播时钟访问（调试 / 进阶使用）
     LiveClock* GetLiveClock();
 
+    // ---------- 直播延迟追帧（9.0，评审意见） ----------
+
+    // 每帧更新延迟状态并计算追帧决策。
+    //   liveLatencyMs  : 估算的直播延迟（毫秒，LatencyEstimator）
+    //   bufferMs       : 缓冲时长（毫秒，NetworkBuffer）
+    //   jitterMs       : 网络抖动（毫秒）
+    //   audioVideoDiffMs : 音视频时钟偏差（毫秒，正 = 视频领先）
+    // 非直播模式下自动忽略（内部复位）。
+    void UpdateLiveLatency(
+        double liveLatencyMs,
+        double bufferMs,
+        double jitterMs,
+        double audioVideoDiffMs);
+
+    // 是否处于追帧状态（生效速度 > 1.0）
+    bool ShouldChase() const;
+
+    // 当前追帧倍速（1.0 = 不追；由 LiveLatencyController 输出）
+    double GetChaseSpeed() const;
+
+    // 是否应丢帧（延迟级丢帧，独立于 LiveClock 的 A/V 级丢帧）：
+    // 延迟积压超过重度档且连续丢帧建议 + 冷却。
+    bool ShouldDropForLatency() const;
+
+    // 延迟误差（毫秒，正 = 积压）
+    double GetLatencyErrorMs() const;
+
+    // 追帧档位（0~4）
+    int GetChaseLevel() const;
+
+    // 追帧持续时长（毫秒，0 = 未在追帧）
+    double GetChaseDurationMs() const;
+
+    // 延迟控制器访问（调试 / 进阶使用）
+    LiveLatencyController* GetLiveLatencyController();
+
     // ---------- 丢帧控制 ----------
 
     // 是否应丢帧（内部含连续判定 + 冷却防抖）
@@ -145,6 +182,8 @@ private:
     DropController dropController;  // 丢帧控制器（点播）
 
     LiveClock liveClock;            // 直播丢帧控制器（8.5）
+
+    LiveLatencyController liveLatency; // 直播延迟追帧控制器（9.0）
 
     bool liveMode = false;          // 直播模式（8.5）
 };

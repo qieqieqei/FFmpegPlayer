@@ -61,6 +61,12 @@
     <Filter Include="Hardware">
       <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000010}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Transport">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000011}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Protocol">
+      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000012}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -73,6 +79,9 @@
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
     <ClCompile Include="Encoder\AudioEncoder.cpp">
+      <Filter>Encoder</Filter>
+    </ClCompile>
+    <ClCompile Include="Encoder\EncoderProfile.cpp">
       <Filter>Encoder</Filter>
     </ClCompile>
     <ClCompile Include="Encoder\VideoEncoder.cpp">
@@ -103,6 +112,12 @@
       <Filter>Hardware</Filter>
     </ClCompile>
     <ClCompile Include="Network\StreamMonitor.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="Network\LatencyEstimator.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="Network\AdaptiveBufferController.cpp">
       <Filter>Network</Filter>
     </ClCompile>
     <ClCompile Include="VideoDecoder.cpp">
@@ -165,6 +180,9 @@
     <ClCompile Include="Network\NetworkStatistics.cpp">
       <Filter>Network</Filter>
     </ClCompile>
+    <ClCompile Include="Network\EndpointSelector.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
     <ClCompile Include="Network\BufferController.cpp">
       <Filter>Network</Filter>
     </ClCompile>
@@ -181,6 +199,12 @@
       <Filter>Sync</Filter>
     </ClCompile>
     <ClCompile Include="Sync\LiveClock.cpp">
+      <Filter>Sync</Filter>
+    </ClCompile>
+    <ClCompile Include="Sync\LiveLatencyController.cpp">
+      <Filter>Sync</Filter>
+    </ClCompile>
+    <ClCompile Include="Sync\PlaybackRateController.cpp">
       <Filter>Sync</Filter>
     </ClCompile>
     <ClCompile Include="Sync\SyncController.cpp">
@@ -201,6 +225,18 @@
     <ClCompile Include="Playlist\PlaylistManager.cpp">
       <Filter>Playlist</Filter>
     </ClCompile>
+    <ClCompile Include="Protocol\MiniSDP.cpp">
+      <Filter>Protocol</Filter>
+    </ClCompile>
+    <ClCompile Include="Transport\JitterBuffer.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="Transport\PacketReorderBuffer.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="Transport\UdpTransport.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
     <ClCompile Include="Utils\ErrorHandler.cpp">
       <Filter>Utils</Filter>
     </ClCompile>
@@ -213,6 +249,9 @@
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
     <ClInclude Include="Encoder\AudioEncoder.h">
+      <Filter>Encoder</Filter>
+    </ClInclude>
+    <ClInclude Include="Encoder\EncoderProfile.h">
       <Filter>Encoder</Filter>
     </ClInclude>
     <ClInclude Include="Encoder\VideoEncoder.h">
@@ -243,6 +282,12 @@
       <Filter>Hardware</Filter>
     </ClInclude>
     <ClInclude Include="Network\StreamMonitor.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="Network\LatencyEstimator.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="Network\AdaptiveBufferController.h">
       <Filter>Network</Filter>
     </ClInclude>
     <ClInclude Include="VideoDecoder.h">
@@ -317,6 +362,9 @@
     <ClInclude Include="Network\NetworkStatistics.h">
       <Filter>Network</Filter>
     </ClInclude>
+    <ClInclude Include="Network\EndpointSelector.h">
+      <Filter>Network</Filter>
+    </ClInclude>
     <ClInclude Include="Network\BufferController.h">
       <Filter>Network</Filter>
     </ClInclude>
@@ -333,6 +381,12 @@
       <Filter>Sync</Filter>
     </ClInclude>
     <ClInclude Include="Sync\LiveClock.h">
+      <Filter>Sync</Filter>
+    </ClInclude>
+    <ClInclude Include="Sync\LiveLatencyController.h">
+      <Filter>Sync</Filter>
+    </ClInclude>
+    <ClInclude Include="Sync\PlaybackRateController.h">
       <Filter>Sync</Filter>
     </ClInclude>
     <ClInclude Include="Sync\SyncController.h">
@@ -352,6 +406,21 @@
     </ClInclude>
     <ClInclude Include="Playlist\PlaylistManager.h">
       <Filter>Playlist</Filter>
+    </ClInclude>
+    <ClInclude Include="Protocol\MiniSDP.h">
+      <Filter>Protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="Transport\IMediaTransport.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="Transport\JitterBuffer.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="Transport\PacketReorderBuffer.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="Transport\UdpTransport.h">
+      <Filter>Transport</Filter>
     </ClInclude>
     <ClInclude Include="Utils\ErrorHandler.h">
       <Filter>Utils</Filter>

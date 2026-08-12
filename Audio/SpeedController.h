@@ -16,6 +16,7 @@
 #include <atomic>
 
 #include "Audio/AudioSpeedController.h"
+#include "Sync/PlaybackRateController.h"
 
 class SpeedController
 {
@@ -30,12 +31,34 @@ public:
         int channels);
 
     // 设置播放速度（建议 0.25 ~ 4.0）
+    // 兼容旧接口：等价于 SetUserSpeed
     void SetSpeed(
         double speed);
 
     double GetSpeed() const;
 
-    // 计算视频帧间隔（秒）：frameDuration / speed
+    // ---------- 9.0：用户倍速与追帧倍速分离（评审意见） ----------
+
+    // 用户主动倍速（0.5 / 1.0 / 1.5 / 2.0）
+    void SetUserSpeed(
+        double speed);
+
+    double GetUserSpeed() const;
+
+    // 直播追帧倍速（LiveLatencyController 输出；仅直播生效）
+    void SetChaseSpeed(
+        double speed);
+
+    double GetChaseSpeed() const;
+
+    // 直播 / 点播模式（点播时追帧倍速不生效）
+    void SetLiveMode(
+        bool live);
+
+    // 最终生效速度：VOD = user；LIVE = user × chase
+    double GetEffectiveSpeed() const;
+
+    // 计算视频帧间隔（秒）：frameDuration / 最终生效速度
     double GetFrameDelay(
         double frameDuration) const;
 
@@ -60,6 +83,9 @@ private:
 
     // 播放速度（渲染线程 SetSpeed / 音频线程 Process 跨线程访问）
     std::atomic<double> speed{ 1.0 };
+
+    // 9.0：速度合成器（用户倍速 × 追帧倍速）
+    PlaybackRateController rateController;
 
     // 内部音频变速器（SOLA）
     AudioSpeedController audioSpeed;

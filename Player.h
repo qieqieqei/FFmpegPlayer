@@ -57,6 +57,8 @@
 #include "Statistics/PlayerStatistics.h"
 #include "Config/ConfigManager.h"
 #include "Network/NetworkStatistics.h"
+#include "Network/LatencyEstimator.h"
+#include "Network/AdaptiveBufferController.h"
 #include "Network/BufferController.h"
 #include "Network/StreamMonitor.h"
 #include "Hardware/CUDAContext.h"
@@ -461,6 +463,17 @@ private:
 
     // 网络缓冲控制（7.3：缓冲水位）
     std::unique_ptr<BufferController> bufferController;
+
+    // 9.0：延迟估算器（网络抖动 / 解码 / 渲染 / 缓冲延迟分量）
+    std::unique_ptr<LatencyEstimator> latencyEstimator;
+
+    // 9.0：自适应缓冲控制器（按网络质量动态调整缓冲目标）
+    std::unique_ptr<AdaptiveBufferController> adaptiveBuffer;
+
+    // 9.0：直播视频流 time_base（自适应目标 -> NetworkBuffer 时长上限）
+    int64_t liveVStreamNum = 0;
+
+    int64_t liveVStreamDen = 0;
 
     // 流媒体监控（7.9：网络流健康巡检）
     std::unique_ptr<StreamMonitor> streamMonitor;

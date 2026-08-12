@@ -80,6 +80,56 @@ struct StreamConfig
     // 8.5：摄像头目标延迟（毫秒）。0 = max_delay=0 极限低延迟（默认）
     int cameraLatencyMs = 0;                // camera_latency_ms
 
+    // ---------- 直播延迟追帧（9.0，评审意见） ----------
+
+    // 目标延迟 / 边界（毫秒）：误差 = 当前延迟 - 目标延迟
+    int chaseTargetLatencyMs = 300;         // chase_target_latency_ms
+
+    int chaseMinLatencyMs = 100;            // chase_min_latency_ms
+
+    int chaseMaxLatencyMs = 2000;           // chase_max_latency_ms
+
+    // 追帧档位阈值（毫秒）：误差超过阈值进入对应档位
+    int chaseThresholdLightMs = 200;        // chase_threshold_light_ms
+
+    int chaseThresholdMediumMs = 350;       // chase_threshold_medium_ms
+
+    int chaseThresholdHeavyMs = 500;        // chase_threshold_heavy_ms
+
+    int chaseThresholdAggressiveMs = 1000;  // chase_threshold_aggressive_ms
+
+    // 追帧倍速（各档位生效速度 = 用户倍速 × 追帧倍速）
+    double chaseSpeedLight = 1.03;          // chase_speed_light
+
+    double chaseSpeedMedium = 1.08;         // chase_speed_medium
+
+    double chaseSpeedHeavy = 1.15;          // chase_speed_heavy
+
+    double chaseSpeedAggressive = 1.25;     // chase_speed_aggressive
+
+    // 追帧平滑 / 防抖
+    double chaseMaxStep = 0.02;             // chase_max_step（每次 Update 倍速步长上限）
+
+    double chaseHysteresisMs = 50;          // chase_hysteresis_ms（降档滞回）
+
+    double chaseDropCooldownMs = 150;       // chase_drop_cooldown_ms（丢帧冷却）
+
+    int chaseDropConsecutive = 3;           // chase_drop_consecutive（连续建议次数）
+
+    // ---------- 自适应缓冲（9.0，评审意见） ----------
+
+    int adaptiveMinBufferMs = 100;          // adaptive_min_buffer_ms（网络良好目标）
+
+    int adaptiveMaxBufferMs = 500;          // adaptive_max_buffer_ms（持续丢包目标）
+
+    double adaptiveJitterSmoothMs = 30.0;   // adaptive_jitter_smooth_ms（良好判定阈值）
+
+    double adaptiveJitterHeavyMs = 80.0;    // adaptive_jitter_heavy_ms（严重抖动阈值）
+
+    double adaptiveLossThreshold = 1.0;     // adaptive_loss_threshold（持续丢包阈值 %）
+
+    int adaptiveMaxStepMs = 50;             // adaptive_max_step_ms（目标变化步长上限）
+
     // ---------- 硬件解码（7.7） ----------
 
     bool hardwareDecode = true;             // 优先硬件解码（自动回退软解）

@@ -30,6 +30,7 @@
 
 #include <string>
 
+#include "Encoder/EncoderProfile.h"
 #include "Utils/FFmpegPtr.h"
 
 extern "C" {
@@ -56,6 +57,61 @@ public:
         const std::string& codecName,
         int bitrateKbps,
         bool live = true);
+
+    // ---------- 9.0：编码参数调优（评审意见；Init 之前调用） ----------
+
+    // 关键帧间隔（帧数；0 = 自动 2 秒）
+    void SetGopSize(
+        int frames);
+
+    // B 帧数（-1 = 编码器默认；0 = 禁用）
+    void SetBFrameCount(
+        int count);
+
+    // 低延迟模式覆盖（强制 zerolatency / ll，独立于 Init 的 live 参数）
+    void SetLowLatency(
+        bool enable);
+
+    // 目标码率覆盖（kbps；>0 时覆盖 Init 的 bitrateKbps）
+    void SetBitrateKbps(
+        int kbps);
+
+    // 最大码率 / VBV max（kbps；>0 时设置 rc_max_rate）
+    void SetMaxBitrateKbps(
+        int kbps);
+
+    // VBV 缓冲（kbps；>0 时设置 rc_buffer_size）
+    void SetVBVBufferSizeKbps(
+        int kbps);
+
+    // 编码线程数（0 = 自动）
+    void SetThreads(
+        int threads);
+
+    // preset / tune 覆盖（空 = 不覆盖；tune 仅 libx264 类有效）
+    void SetPreset(
+        const std::string& preset);
+
+    void SetTune(
+        const std::string& tune);
+
+    // 编码档位 / 级别（"high" / "main" / "baseline" / "4.1"；空 = 默认）
+    void SetProfileLevel(
+        const std::string& profile,
+        const std::string& level);
+
+    // 恒定码率（nal-hrd=cbr / rc=cbr）
+    void SetCbr(
+        bool enable);
+
+    // 一键应用预设档（覆盖上述全部字段）
+    void SetProfile(
+        const EncoderProfile& profile);
+
+    // 预设档名快捷方式（"balanced" / "low-latency" / "ultra" / "high"）
+    void SetProfileName(
+        const std::string& name);
+
 
     // 送一帧原始图像（YUV420P）进行编码
     // 成功返回 true；frame 由调用方管理（编码器内部会引用并立即拷贝）
@@ -89,4 +145,32 @@ private:
     std::string codecName;           // 编码器名称
 
     bool ready = false;              // 初始化标志
+
+    // ---------- 9.0：调优参数（Init 前设置，Init 内应用） ----------
+
+    int gopSize = 0;                 // 关键帧间隔（0 = 自动 2 秒）
+
+    int bFrames = -1;                // B 帧数（-1 = 默认）
+
+    bool lowLatencySet = false;      // 显式低延迟覆盖
+
+    int bitrateKbpsOverride = 0;     // 目标码率覆盖（0 = 沿用 Init 参数）
+
+    int maxBitrateKbps = 0;          // 最大码率（0 = 不设置）
+
+    int vbvBufferKbps = 0;           // VBV 缓冲（0 = 不设置）
+
+    int threads = 0;                 // 编码线程数（0 = 自动）
+
+    std::string presetOverride;      // preset 覆盖（空 = 不覆盖）
+
+    std::string tuneOverride;        // tune 覆盖（空 = 不覆盖）
+
+    std::string profileOverride;     // 档位覆盖（空 = 默认）
+
+    std::string levelOverride;       // 级别覆盖（空 = 默认）
+
+    bool cbrOverride = false;        // 恒定码率
+
+    std::string profileName;         // 当前预设档名（日志用）
 };

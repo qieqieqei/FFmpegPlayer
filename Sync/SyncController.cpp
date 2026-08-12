@@ -171,6 +171,9 @@ void SyncController::Reset()
 
     liveClock.Reset();
 
+    // 9.0：延迟追帧状态一并复位
+    liveLatency.Reset();
+
     // 重置不改变模式（Player 每次 OpenMedia 会显式 SetLiveMode）
 }
 
@@ -183,6 +186,9 @@ void SyncController::SetLiveMode(
     dropController.Reset();
 
     liveClock.Reset();
+
+    // 9.0：切模式时复位延迟追帧状态
+    liveLatency.Reset();
 
     Logger::Info()
         << "[Sync] Live mode : "
@@ -198,4 +204,62 @@ bool SyncController::IsLiveMode() const
 LiveClock* SyncController::GetLiveClock()
 {
     return &liveClock;
+}
+
+// ============================================================
+// 直播延迟追帧（9.0）
+// ============================================================
+
+void SyncController::UpdateLiveLatency(
+    double liveLatencyMs,
+    double bufferMs,
+    double jitterMs,
+    double audioVideoDiffMs)
+{
+    // 非直播模式：忽略（内部保持复位状态）
+    if (!liveMode)
+    {
+        return;
+    }
+
+    liveLatency.Update(
+        liveLatencyMs,
+        bufferMs,
+        jitterMs,
+        audioVideoDiffMs);
+}
+
+bool SyncController::ShouldChase() const
+{
+    return liveLatency.ShouldChase();
+}
+
+double SyncController::GetChaseSpeed() const
+{
+    return liveLatency.GetPlaybackRate();
+}
+
+bool SyncController::ShouldDropForLatency() const
+{
+    return liveLatency.ShouldDropFrame();
+}
+
+double SyncController::GetLatencyErrorMs() const
+{
+    return liveLatency.GetLatencyErrorMs();
+}
+
+int SyncController::GetChaseLevel() const
+{
+    return liveLatency.GetChaseLevel();
+}
+
+double SyncController::GetChaseDurationMs() const
+{
+    return liveLatency.GetChaseDurationMs();
+}
+
+LiveLatencyController* SyncController::GetLiveLatencyController()
+{
+    return &liveLatency;
 }

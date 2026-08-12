@@ -34,6 +34,18 @@ bool AudioSpeedController::Init(
 void AudioSpeedController::SetSpeed(
     double speed)
 {
+    // 兼容旧接口：用户倍速
+    SetUserSpeed(speed);
+}
+
+double AudioSpeedController::GetSpeed() const
+{
+    return speed.load();
+}
+
+void AudioSpeedController::SetUserSpeed(
+    double speed)
+{
     // 限制范围，防止异常参数
     speed =
         std::max(
@@ -42,12 +54,52 @@ void AudioSpeedController::SetSpeed(
                 4.0,
                 speed));
 
-    this->speed.store(speed);
+    userSpeed.store(speed);
+
+    ApplyEffectiveSpeed();
+}
+
+void AudioSpeedController::SetChaseSpeed(
+    double speed)
+{
+    // 追帧倍速钳制 1.0 ~ 2.0（防异常参数）
+    speed =
+        std::max(
+            1.0,
+            std::min(
+                2.0,
+                speed));
+
+    chaseSpeed.store(speed);
+
+    ApplyEffectiveSpeed();
+}
+
+double AudioSpeedController::GetEffectiveSpeed() const
+{
+    return speed.load();
+}
+
+void AudioSpeedController::ApplyEffectiveSpeed()
+{
+    // 最终生效速度 = 用户倍速 × 追帧倍速
+    double effective =
+        userSpeed.load() *
+        chaseSpeed.load();
+
+    effective =
+        std::max(
+            0.25,
+            std::min(
+                4.0,
+                effective));
+
+    speed.store(effective);
 
     // 输入步长 = 输出步长 * speed
     int newHop =
         static_cast<int>(
-            HOP_OUT * speed);
+            HOP_OUT * effective);
 
     if (newHop < 1)
     {
@@ -55,11 +107,6 @@ void AudioSpeedController::SetSpeed(
     }
 
     hopIn.store(newHop);
-}
-
-double AudioSpeedController::GetSpeed() const
-{
-    return speed.load();
 }
 
 int AudioSpeedController::Process(

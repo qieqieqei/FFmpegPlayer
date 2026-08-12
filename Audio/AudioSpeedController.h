@@ -46,10 +46,25 @@ public:
         int channels);
 
     // 设置播放速度（建议 0.25 ~ 4.0）
+    // 兼容旧接口：等价于 SetUserSpeed
     void SetSpeed(
         double speed);
 
     double GetSpeed() const;
+
+    // ---------- 9.0：用户倍速与追帧倍速分离（评审意见） ----------
+
+    // 用户主动倍速（0.5 / 1.0 / 1.5 / 2.0，钳制 0.25 ~ 4.0）
+    void SetUserSpeed(
+        double speed);
+
+    // 直播追帧倍速（LiveLatencyController 输出，钳制 1.0 ~ 2.0）
+    void SetChaseSpeed(
+        double speed);
+
+    // 最终生效速度 = userSpeed × chaseSpeed
+    // （内部 SOLA 按此速度变速）
+    double GetEffectiveSpeed() const;
 
     // 处理输入 PCM
     // in:     输入 S16 PCM
@@ -86,13 +101,21 @@ private:
         uint8_t* out,
         int outCap);
 
+    // 按 user × chase 重算最终生效速度并更新输入步长
+    void ApplyEffectiveSpeed();
+
     // 参数
     int sampleRate = 48000;
 
     int channels = 2;
 
-    // 播放速度（渲染线程 SetSpeed / Demux 线程 Process 跨线程访问）
-    std::atomic<double> speed{ 1.0 };
+    // 播放速度（渲染线程 SetUserSpeed / SetChaseSpeed，
+    // Demux 线程 Process 跨线程访问）
+    std::atomic<double> speed{ 1.0 };          // 最终生效速度（user × chase）
+
+    std::atomic<double> userSpeed{ 1.0 };      // 用户倍速
+
+    std::atomic<double> chaseSpeed{ 1.0 };     // 追帧倍速（仅直播使用）
 
     // SOLA 参数（单位：帧，1帧 = channels 个采样）
     static constexpr int WINDOW = 2048;      // 窗口长度（~43ms @48k）
