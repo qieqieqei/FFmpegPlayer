@@ -15,7 +15,7 @@
 | 模块 | 状态 | 说明 |
 |---|---|---|
 | `Input/`（File/Network/RTSPClient） | ✅ 完成 | 协议工厂 + 超时注入 + 中断回调 |
-| `Sync/`（Audio/Video/MasterClock + Scheduler + Drop） | ✅ 完成 | 音频主时钟 + ffplay 级目标延迟调整 + 丢帧追赶 + 墙钟漂移校正 |
+| `Sync/`（Audio/Video/MasterClock + Scheduler + Drop + Live/PlaybackRate） | ✅ 完成 | 音频主时钟 + ffplay 级目标延迟调整 + 丢帧追赶 + 墙钟漂移校正 + 9.0 直播 5 档追帧 + 用户/追帧倍速分离 |
 | `Hardware/`（CUDAContext/HardwareDecoder） | ✅ 解码 / 🧪 渲染未做 | NVDEC/D3D11VA/DXVA2 解码 + 软解回退；**GPU 零拷贝渲染未实现**（回读 CPU） |
 | `Queue/` + `Network/NetworkBuffer` | ✅ 完成 | RAII 所有权 + 谓词等待 + GOP 感知丢包 |
 | `Decoder`（Video/Audio/Hardware） | ✅ 完成 | DecodeResult 三态（Success/NeedMore/End/Error） |
@@ -26,7 +26,9 @@
 | `Screenshot/` | ✅ 完成 | PNG/JPG |
 | `Playlist/` | ✅ 完成 | 多文件连播（上一首/下一首/自动连播） |
 | `Seek/` | ✅ 完成 | 关键帧定位 + 解码器 flush + 代数防竞态 |
-| `Network/`（统计/缓冲/重连/推流/监控） | ✅ 完成 | 丢包率、缓冲水位、自动重连、RTMP 推流、健康巡检 |
+| `Network/`（统计/缓冲/重连/推流/监控） | ✅ 完成 | 丢包率、缓冲水位、自动重连、RTMP 推流、健康巡检、9.0 延迟估算/自适应缓冲/端点择优 |
+| `Transport/`（UDP/Jitter/Reorder） | ✅ 完成 | Winsock UDP 传输层 + 抖动缓冲 + 乱序重排（9.0） |
+| `Protocol/`（MiniSDP） | ✅ 完成 | 极简 SDP 解析/生成（9.0，自定义传输会话协商） |
 | `Config/` | ✅ 完成 | 自研轻量 JSON 解析，player.json + stream.json |
 
 ### 网络与配置（7.x）
@@ -64,6 +66,24 @@
 - ✅ **PacketQueue 直播模式（LiveMode）**：`SetLiveMode(enable, timeBase, maxDurationMs)`——直播时 Push 不再因满而阻塞（背压会让 Demux 卡住、延迟无限累积），入队后按队首/队尾 pts 算队列时长，`queue_duration > 500ms`（`live_max_queue_ms` 可配）丢旧包追最新画面；丢包 GOP 感知（沿用 8.4 教训：非关键帧丢到关键帧为止，队头是关键帧则整段清空），带丢包计数（已接入 NetworkStatistics 统计）；直播音频队列已切换到 LiveMode（音频无解码依赖，丢弃安全），直播视频队列在 NetworkBuffer 上叠加了**时长上限**（`SetLiveDurationMs`，与包数上限双保险）
 - ✅ **SyncController 直播策略（LiveClock）**：新增 `Sync/LiveClock.h/.cpp`——直播时 `delay = videoPts - masterTime` 超过阈值（超前默认 100ms / 落后默认 50ms）就丢帧，例：网络延迟 1 秒 → `delay≈1s` 超阈值 → 丢帧 → 下一帧离实时更近 → 循环 → 恢复实时；`NextWaitMs` 直播恒返回 0（不等待，最低延迟），其余情况立即渲染；连续判定 + 冷却防抖与 DropController 一致；`SyncController::SetLiveMode(bool)` 一键切换直播/点播策略，Player `OpenMedia` 按 `demuxer->IsLive()` 自动路由
 - ✅ 新增配置：`live_max_queue_ms`（直播追最新阈值，默认 500）、`camera_latency_ms`（摄像头目标延迟，0 = 极限低延迟，默认 0），stream.json 可配
+
+### 直播延迟追帧 / 自适应缓冲 / 传输层（9.0）
+- ✅ **LiveLatencyController 5 档追帧**（`Sync/LiveLatencyController`）：直播延迟分 5 档，按端到端延迟估算自动降档追帧，带滞回（hysteresis）防抖——延迟高时逐档追赶、恢复后逐档退回，避免频繁抖动
+- ✅ **PlaybackRateController 倍速合成**（`Sync/PlaybackRateController`）：`userSpeed × chaseSpeed` 合成最终倍速——追帧时临时微调播放速率平滑追赶，用户倍速与追帧倍速互不干扰
+- ✅ **SpeedController 用户/追帧倍速分离**（`Audio/SpeedController` + `AudioSpeedController`）：修复 **1.5×1.1=1.65 合成 bug**——原实现两倍速直接相乘，1.5x 播放时追帧 1.1x 会变 1.65x 且无法精确还原；现分离为独立系数，追帧结束精确还原用户倍速
+- ✅ **LatencyEstimator 端到端延迟估算**（`Network/LatencyEstimator`）：网络延迟（3×抖动 EWMA）+ 解码 + 渲染 + 缓冲组件延迟组装估算，供追帧 / 自适应缓冲决策
+- ✅ **AdaptiveBufferController 动态缓冲目标**（`Network/AdaptiveBufferController`）：按抖动 / 延迟实时调整缓冲目标（抖动大 → 加深，抖动小 → 减浅），替代固定 300ms
+- ✅ **NetworkStatistics 增强**：新增抖动（jitter EWMA + 方差）、卡顿统计（stallCount / stallDurationMs）、渲染丢帧统计（droppedFrameCount / dropFrameRate）、延迟分量（decode / render / buffer）
+- ✅ **传输层 `Transport/`**：`IMediaTransport` 抽象 + `UdpTransport`（Winsock UDP 收发 + 连接管理） + `PacketReorderBuffer`（RTP 乱序重排，gap timer 超时上抛） + `JitterBuffer`（去抖缓冲）——自定义 UDP 传输链（配合 MiniSDP）
+- ✅ **MiniSDP**（`Protocol/MiniSDP`）：极简 SDP 解析 / 生成，自定义传输会话协商（SDP 会话描述 ↔ 内部结构互转）
+- ✅ **EndpointSelector 端点多源择优**（`Network/EndpointSelector`）：多源地址加权评分（延迟 / 丢包 / 历史）择优 + 防抖切换
+- ✅ **EncoderProfile 预设档 + VideoEncoder 调优 setter**（`Encoder/EncoderProfile`）：libx264/libx265/nvenc 预设档，GOP / B 帧 / VBV / preset 可调 setter，直播低延迟与点播高质量配置分离
+- ✅ **Player 接线**：渲染循环追帧决策（LiveLatencyController 驱动）、延迟丢帧、自适应 tick、卡顿统计接入；`ws2_32.lib` 全 4 配置链接
+- ✅ **RTMP 推流 / 直播录制修复（实测，commit 7fa0958）**：
+  - **SPS/PPS 时序**：`VideoEncoder` 在 `avcodec_open2` 前设置 `AV_CODEC_FLAG_GLOBAL_HEADER` → libx264 打开时即生成 SPS/PPS extradata（avcC 完整）→ RTMP 握手头合法，mediamtx 接受（此前 avcC 为空，推流必失败 `unable to parse H264 config`）
+  - **音频 time_base**：`avcodec_receive_packet` 不填充 `pkt->time_base` → 音频 pts 全部按 0/1 换算 → muxer 交织停滞 10s 超时（`-10053`）+ 直播录制 0 字节；修复：输出音频包显式设置 `time_base={1,44100}` + 首包 pts 基线归一化（`outAudioPtsBase`）
+  - 实测：RTMP 推流 mediamtx `stream is available and online, 2 tracks (H264, MPEG-4 Audio)`；直播录制 7MB FLV 完整可播
+- ✅ **Buffer underrun 误报修复（commit 38bcf5f）**：`IsBuffering` 原以视频队列包数判定（live 模式包瞬时消费 → 队列瞬时空 → 频繁误报 underrun + 污染卡顿统计）；改为**纯时间窗判定**——持续 500ms 无新数据到达才算饥饿，启动阶段（未收数据）不报。实测 underrun 45s 11 次 → 0 次
 
 ### 编码 / 封装 / 推流 / 滤镜（7.x 第二阶段）
 - ✅ 视频编码 `Encoder/VideoEncoder`：libx264 / libx265 / h264_nvenc；直播低延迟（libx264 `tune=zerolatency`，nvenc `preset=ll` + `bf=0`），GOP=2s，输入 YUV420P
@@ -277,8 +297,10 @@ FFmpeg_text_claw
 ├── Screenshot\             # ScreenshotManager（PNG/JPG）
 ├── Seek\                   # SeekController
 ├── Statistics\             # PlayerStatistics（缓冲统计）
+├── Transport\              # IMediaTransport / UdpTransport / JitterBuffer / PacketReorderBuffer（9.0）
+├── Protocol\               # MiniSDP 极简 SDP 解析/生成（9.0）
 ├── Subtitle\               # SubtitleManager（.srt / .ass 解析）
-├── Sync\                   # AudioClock / Clock / SyncController
+├── Sync\                   # AudioClock / Clock / SyncController / LiveClock / LiveLatencyController / PlaybackRateController
 ├── Utils\                  # Logger（日志系统）/ ErrorHandler / FFmpegPtr
 ├── Font\simhei.ttf         # 中文字体
 ├── rtsp_reconnect_test.ps1 # RTSP 断网重连快速验证（mediamtx + lavfi 推流，GOP=1s）
@@ -317,6 +339,9 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 - ✅（2026-08-09）队列 RAII 所有权 + 谓词等待 + GOP 感知丢包（8.4）——评审意见（裸指针隐患 / 10ms 轮询 / 丢包策略 / 丢包可观测）落实；24h 长测结束后部署正式编译 + 回归
 - ✅（2026-08-09）评审五/六/七落实（8.4）：解码三态 DecodeResult、ffplay 级目标延迟调整、音频墙钟漂移校正、解码路径诚实标注 + 模块状态总表
 - ✅（2026-08-10）**13 帧渲染冻结根因定位并修复**（git bisect → 8e006b7 引入）：队列 `Pop` 缺 `notify_all()` 导致无超时谓词等待的生产者永久阻塞（commit 097e8ba）；4 阶段回归 15/16 PASS，RTSP 连续渲染恢复
+- ✅（2026-08-12）**9.0 直播延迟追帧 / 自适应缓冲 / 传输层**（评审意见落地）：LiveLatencyController 5 档追帧 + 滞回、PlaybackRateController 用户×追帧倍速合成、SpeedController 倍速分离（修 1.65 合成 bug）、LatencyEstimator、AdaptiveBufferController、UdpTransport/JitterBuffer/PacketReorderBuffer、MiniSDP、EndpointSelector、EncoderProfile（commit 8190977）
+- ✅（2026-08-12）**RTMP 推流 / 直播录制修复**：SPS/PPS（GLOBAL_HEADER 时序）+ 音频 time_base/pts 归一化；mediamtx 实测 2 轨在线、录制 FLV 7MB 完整可播（commit 7fa0958）
+- ✅（2026-08-12）**Buffer underrun 误报修复**：IsBuffering 改纯时间窗判定（500ms 无新数据才算饥饿），实测 underrun 11→0 次（commit 38bcf5f）
+- ✅（2026-08-12）**RTSP 真机验证**：LAN 摄像头（192.168.1.104 → mediamtx）播放 / RTMP 推流 / 直播录制 / 音频监测全链路实测通过
 - 播放器 UI 完善
 - 真实字幕文件端到端验证（.srt 渲染已实现，尚未用真实文件回归）
-- RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）
