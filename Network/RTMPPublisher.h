@@ -57,6 +57,10 @@ public:
     bool AddAudioStream(
         AVCodecParameters* codecpar);
 
+    // 同步最新编码器参数（第一帧后 extradata 才有效）
+    bool RefreshVideoExtradata(
+        AVCodecContext* ctx);
+
     // 开始推流（写 FLV 头；关键帧到达后真正开始推送）
     bool Start();
 

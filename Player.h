@@ -511,7 +511,11 @@ private:
 
     int64_t outVideoPktIdx = 0;                // 输出视频包序号（重建 pts）
 
+    bool outExtradataSynced = false;           // 首个编码包后已同步 extradata
+
     int64_t outAudioPktIdx = 0;                // 输出音频包序号（重建 pts）
+
+    int64_t outAudioPtsBase = AV_NOPTS_VALUE;  // 音频 pts 归一化基准（首个包 pts）
 
     bool recording = false;                    // 录制中
 

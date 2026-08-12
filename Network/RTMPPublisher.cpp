@@ -95,6 +95,18 @@ bool RTMPPublisher::AddAudioStream(
             codecpar) != nullptr;
 }
 
+bool RTMPPublisher::RefreshVideoExtradata(
+    AVCodecContext* ctx)
+{
+    if (!connected)
+    {
+        return false;
+    }
+
+    return
+        muxer.RefreshVideoExtradata(ctx);
+}
+
 bool RTMPPublisher::Start()
 {
     if (!connected)

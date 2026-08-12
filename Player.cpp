@@ -2542,6 +2542,34 @@ void Player::FeedOutputVideo(
         // 所有输出都是视频流在前（index 0）
         pkt->stream_index = 0;
 
+        // 第一个编码包产出后，编码器 extradata（SPS/PPS）才有效。
+        // StartPush/StartRecording 时编码器刚创建，codecpar->extradata
+        // 为空，RTMP 推流时 avcC 为空会被接收端拒绝
+        // （mediamtx: unable to parse H264 config: EOF）。
+        // 在 WriteHeader 前同步最新编码参数。
+        if (!outExtradataSynced)
+        {
+            outExtradataSynced = true;
+
+            AVCodecContext* enc =
+                outVideoEncoder->GetContext();
+
+            if (recordMuxer)
+            {
+                recordMuxer->RefreshVideoExtradata(enc);
+            }
+
+            if (rtmpPublisher)
+            {
+                rtmpPublisher->RefreshVideoExtradata(enc);
+            }
+
+            if (hlsMuxer)
+            {
+                hlsMuxer->RefreshVideoExtradata(enc);
+            }
+        }
+
         outVideoPktIdx++;
 
         DispatchVideoPacket(pkt);
@@ -2588,6 +2616,13 @@ void Player::FeedOutputAudio(
     while ((pkt =
         outAudioEncoder->GetPacket()) != nullptr)
     {
+        // avcodec_receive_packet 不填 time_base（实测 0/1），
+        // 必须显式设置，否则 muxer 时间基换算全错
+        // （音频 pts 换算后恒 0，av_interleaved_write_frame
+        // 交错缓冲卡死，推流约 10s 无数据被 mediamtx 断开）
+        pkt->time_base =
+            outAudioEncoder->GetContext()->time_base;
+
         // 同样兜底：音频包 pts 缺失时按输出顺序重建
         if (pkt->pts == AV_NOPTS_VALUE)
         {
@@ -2596,6 +2631,25 @@ void Player::FeedOutputAudio(
 
             pkt->dts =
                 outAudioPktIdx;
+        }
+
+        // 归一化：源流时间戳可能不从 0 开始（RTSP 音频实测
+        // 从 49918 采样起），与自管理的视频 pts（0 起）量级
+        // 不一致会让 muxer 交错缓冲。统一减去首包基准；
+        // 只改输出包（新分配的），不影响播放路径解码帧。
+        if (outAudioPtsBase == AV_NOPTS_VALUE)
+        {
+            outAudioPtsBase =
+                pkt->pts;
+        }
+
+        if (outAudioPtsBase != 0)
+        {
+            pkt->pts -=
+                outAudioPtsBase;
+
+            pkt->dts -=
+                outAudioPtsBase;
         }
 
         // 音频包固定写向 index 1（编码器默认 0，必须改）
@@ -2719,6 +2773,25 @@ void Player::FlushOutEncoders()
                     outAudioPktIdx;
             }
 
+            // 同 FeedOutputAudio：补 time_base + pts 归一化
+            pkt->time_base =
+                outAudioEncoder->GetContext()->time_base;
+
+            if (outAudioPtsBase == AV_NOPTS_VALUE)
+            {
+                outAudioPtsBase =
+                    pkt->pts;
+            }
+
+            if (outAudioPtsBase != 0)
+            {
+                pkt->pts -=
+                    outAudioPtsBase;
+
+                pkt->dts -=
+                    outAudioPtsBase;
+            }
+
             pkt->stream_index = 1;
 
             outAudioPktIdx++;
@@ -2819,6 +2892,10 @@ bool Player::StartRecording(
 {
     std::lock_guard<std::mutex> lock(
         outMutex);
+
+    // 新输出会话：首包需重新同步 extradata / pts 基准
+    outExtradataSynced = false;
+    outAudioPtsBase = AV_NOPTS_VALUE;
 
     if (recording)
     {
@@ -2963,6 +3040,10 @@ bool Player::StartPushing(
     std::lock_guard<std::mutex> lock(
         outMutex);
 
+    // 新输出会话：首包需重新同步 extradata / pts 基准
+    outExtradataSynced = false;
+    outAudioPtsBase = AV_NOPTS_VALUE;
+
     if (pushing)
     {
         return false;
@@ -3105,6 +3186,10 @@ bool Player::StartHLS(
 {
     std::lock_guard<std::mutex> lock(
         outMutex);
+
+    // 新输出会话：首包需重新同步 extradata / pts 基准
+    outExtradataSynced = false;
+    outAudioPtsBase = AV_NOPTS_VALUE;
 
     if (hlsActive)
     {

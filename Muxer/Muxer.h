@@ -56,6 +56,12 @@ public:
     AVStream* AddAudioStream(
         AVCodecParameters* codecpar);
 
+    // 同步最新编码器参数（第一帧编码后 extradata/SPS-PPS 才有效）
+    // 用于修复：StartPush/StartRecording 时编码器尚未输出帧，
+    // codecpar->extradata 为空导致 RTMP avcC 为空被接收端拒绝。
+    bool RefreshVideoExtradata(
+        AVCodecContext* ctx);
+
     // 写文件头（必须在所有 AddStream 之后）
     bool WriteHeader();
 

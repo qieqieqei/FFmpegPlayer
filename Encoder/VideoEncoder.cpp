@@ -254,6 +254,14 @@ bool VideoEncoder::Init(
 
     // ---------- 打开编码器 ----------
 
+    // GLOBAL_HEADER：SPS/PPS 在 avcodec_open2 时即生成到 extradata，
+    // 供 muxer 写 avcC（RTMP/FLV/HLS 均需）。否则 libx264/nvenc
+    // 只在关键帧内嵌 SPS/PPS（Annex-B），ctx->extradata 始终为空，
+    // 推流时 WriteHeader 写出的 avcC 为空，接收端（如 mediamtx）
+    // 直接拒绝：unable to parse H264 config: EOF。
+    ctx->flags |=
+        AV_CODEC_FLAG_GLOBAL_HEADER;
+
     int ret =
         avcodec_open2(
             ctx.get(),

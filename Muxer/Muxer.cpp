@@ -114,6 +114,38 @@ AVStream* Muxer::AddAudioStream(
     return stream;
 }
 
+bool Muxer::RefreshVideoExtradata(
+    AVCodecContext* ctx)
+{
+    if (!fmt || !ctx)
+    {
+        return false;
+    }
+
+    if (fmt->nb_streams == 0 ||
+        fmt->streams[0]->codecpar == nullptr)
+    {
+        return false;
+    }
+
+    int ret =
+        avcodec_parameters_from_context(
+            fmt->streams[0]->codecpar,
+            ctx);
+
+    if (ret < 0)
+    {
+        ErrorHandler::LogFFmpeg(
+            ErrorTag::Muxer,
+            "RefreshVideoExtradata",
+            ret);
+
+        return false;
+    }
+
+    return true;
+}
+
 bool Muxer::WriteHeader()
 {
     if (!fmt || headerWritten)
