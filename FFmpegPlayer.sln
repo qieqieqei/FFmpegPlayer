@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.12.35527.113 d17.12
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FFmpeg_text_claw", "FFmpeg_text_claw.vcxproj", "{9A216074-CFDD-46A2-B30E-8A51C53C41C7}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FFmpegPlayer", "FFmpegPlayer.vcxproj", "{9A216074-CFDD-46A2-B30E-8A51C53C41C7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

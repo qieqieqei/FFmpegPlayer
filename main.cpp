@@ -1,12 +1,12 @@
 // main.cpp - 播放器入口
 //
 // 用法：
-//   FFmpeg_text_claw.exe [文件1] [文件2] ...
-//   FFmpeg_text_claw.exe -v [文件...]      # DEBUG 级别日志
-//   FFmpeg_text_claw.exe --log-file xxx.log [文件...]  # 同时写日志文件
-//   FFmpeg_text_claw.exe --record [文件...]   # 启动即录制（record_<时间戳>.flv）
-//   FFmpeg_text_claw.exe --hls [文件...]      # 启动即 HLS 输出（hls_out/）
-//   FFmpeg_text_claw.exe --push [文件...]     # 启动即 RTMP 推流（stream.json 的 rtmp_url）
+//   FFmpegPlayer.exe [文件1] [文件2] ...
+//   FFmpegPlayer.exe -v [文件...]      # DEBUG 级别日志
+//   FFmpegPlayer.exe --log-file xxx.log [文件...]  # 同时写日志文件
+//   FFmpegPlayer.exe --record [文件...]   # 启动即录制（record_<时间戳>.flv）
+//   FFmpegPlayer.exe --hls [文件...]      # 启动即 HLS 输出（hls_out/）
+//   FFmpegPlayer.exe --push [文件...]     # 启动即 RTMP 推流（stream.json 的 rtmp_url）
 //   不带参数时播放默认测试视频（或 player.json 的 default_url）
 //   多个文件会加入播放列表（6.8），用 [ / ] 切换
 

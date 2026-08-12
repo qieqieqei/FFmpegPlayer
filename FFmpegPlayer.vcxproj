@@ -22,7 +22,7 @@
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{9a216074-cfdd-46a2-b30e-8a51c53c41c7}</ProjectGuid>
-    <RootNamespace>FFmpeg_text_claw</RootNamespace>
+    <RootNamespace>FFmpegPlayer</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />

@@ -141,12 +141,12 @@
 ## 命令行用法
 
 ```bat
-FFmpeg_text_claw.exe [文件1] [文件2] ...        # 多文件加入播放列表
-FFmpeg_text_claw.exe -v file.mp4                # DEBUG 级别日志
-FFmpeg_text_claw.exe --log-file player.log file.mp4   # 同时写日志文件
-FFmpeg_text_claw.exe --record file.mp4          # 播放同时录制 FLV（record_*.flv）
-FFmpeg_text_claw.exe --hls file.mp4             # 播放同时输出 HLS（hls_out/）
-FFmpeg_text_claw.exe --push rtmp://host/live/stream file.mp4   # 播放同时 RTMP 推流
+FFmpegPlayer.exe [文件1] [文件2] ...        # 多文件加入播放列表
+FFmpegPlayer.exe -v file.mp4                # DEBUG 级别日志
+FFmpegPlayer.exe --log-file player.log file.mp4   # 同时写日志文件
+FFmpegPlayer.exe --record file.mp4          # 播放同时录制 FLV（record_*.flv）
+FFmpegPlayer.exe --hls file.mp4             # 播放同时输出 HLS（hls_out/）
+FFmpegPlayer.exe --push rtmp://host/live/stream file.mp4   # 播放同时 RTMP 推流
 ```
 
 不带参数时播放默认测试视频 `D:\FFmpeg\ffmpeg\test_audio.mp4`（代码内 kDefaultVideo 常量，可自行修改）。
@@ -257,12 +257,12 @@ Player 作为控制中心，持有全部模块，三线程 + 主渲染循环：
 ```bat
 :: 命令行 MSBuild（也可直接用 Visual Studio 打开 sln）
 "D:\application\visual studio\IDE\MSBuild\Current\Bin\MSBuild.exe" ^
-  FFmpeg_text_claw.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+  FFmpegPlayer.vcxproj /p:Configuration=Release /p:Platform=x64 /m
 ```
 
-或打开 `FFmpeg_text_claw.sln` → 生成 → 重新生成解决方案（Debug/Release + x64）。
+或打开 `FFmpegPlayer.sln` → 生成 → 重新生成解决方案（Debug/Release + x64）。
 
-输出：`x64\Release\FFmpeg_text_claw.exe`（构建后需把 FFmpeg/SDL2 DLL 与 Font 目录放到 exe 旁）。
+输出：`x64\Release\FFmpegPlayer.exe`（构建后需把 FFmpeg/SDL2 DLL 与 Font 目录放到 exe 旁）。
 
 ### 编译注意事项（踩坑记录）
 
@@ -277,7 +277,7 @@ Player 作为控制中心，持有全部模块，三线程 + 主渲染循环：
 ## 项目目录结构
 
 ```
-FFmpeg_text_claw
+FFmpegPlayer
 ├── main.cpp                 # 入口：命令行解析（-v / --log-file）+ 播放列表
 ├── Player.h / Player.cpp    # 控制中心：三线程 + 状态机 + 媒体切换
 ├── Demuxer.h / .cpp         # 解封装：avformat_open_input / ReadPacket / Seek
@@ -305,7 +305,7 @@ FFmpeg_text_claw
 ├── Font\simhei.ttf         # 中文字体
 ├── rtsp_reconnect_test.ps1 # RTSP 断网重连快速验证（mediamtx + lavfi 推流，GOP=1s）
 ├── rtsp_24h_test.ps1       # RTSP 24h 断网长测（48 轮断网/恢复，summary + 日志裁剪）
-├── FFmpeg_text_claw.sln / .vcxproj
+├── FFmpegPlayer.sln / .vcxproj
 └── README.md
 ```
 

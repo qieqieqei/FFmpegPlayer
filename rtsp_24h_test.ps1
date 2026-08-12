@@ -5,8 +5,8 @@ $ErrorActionPreference = "Continue"
 
 $mtxExe   = "C:\Users\bbitti\.openclaw\workspace\mediamtx\mediamtx.exe"
 $mtxDir   = "C:\Users\bbitti\.openclaw\workspace\mediamtx"
-$playerExe = "D:\application\visual studio\product\FFmpeg_text_claw\x64\Release\FFmpeg_text_claw.exe"
-$workDir  = "D:\application\visual studio\product\FFmpeg_text_claw"
+$playerExe = "C:\Users\bbitti\.openclaw\workspace\regress\golden_src\x64\Release\FFmpegPlayer.exe"
+$workDir  = "C:\Users\bbitti\.openclaw\workspace\regress\golden_src"
 $logDir   = "C:\Users\bbitti\.openclaw\workspace\rtsp_24h"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $summary  = "$logDir\summary.txt"
@@ -64,7 +64,7 @@ function Log([string]$msg) {
 }
 
 # ---------- cleanup leftovers ----------
-Get-Process -Name FFmpeg_text_claw,mediamtx,ffmpeg -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process -Name FFmpegPlayer,mediamtx,ffmpeg -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 Remove-Item "$logDir\*" -Force -ErrorAction SilentlyContinue
 

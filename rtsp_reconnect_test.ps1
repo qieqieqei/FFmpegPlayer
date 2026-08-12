@@ -6,8 +6,8 @@ $ErrorActionPreference = "Continue"
 
 $mtxExe   = "C:\Users\bbitti\.openclaw\workspace\mediamtx\mediamtx.exe"
 $mtxDir   = "C:\Users\bbitti\.openclaw\workspace\mediamtx"
-$playerExe = "D:\application\visual studio\product\FFmpeg_text_claw\x64\Release\FFmpeg_text_claw.exe"
-$workDir  = "D:\application\visual studio\product\FFmpeg_text_claw"
+$playerExe = "C:\Users\bbitti\.openclaw\workspace\regress\golden_src\x64\Release\FFmpegPlayer.exe"
+$workDir  = "C:\Users\bbitti\.openclaw\workspace\regress\golden_src"
 $logDir   = "C:\Users\bbitti\.openclaw\workspace\rtsp_test"
 # Pusher source: lavfi synthetic (testsrc2 + sine), endless, clean timestamps, GOP=1s (IDR every second).
 # Do NOT use -stream_loop: timestamp jump at loop point corrupts the aac queue and stalls the muxer.
