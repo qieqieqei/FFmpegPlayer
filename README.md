@@ -98,6 +98,16 @@
 - ✅ 帧步进（暂停时逐帧查看，N 键）
 - ✅ 全屏切换（F 键）
 - ✅ 轻量日志系统：级别过滤（DEBUG/INFO/WARN/ERROR）、时间戳、`-v` 开 DEBUG、`--log-file` 写文件
+### 稳定版（8.14）：崩溃修复 / 点播 / 控制栏 / 循环回退 / 切歌修复
+- ✅ **无参数启动崩溃修复**：main.cpp 哨兵 `firstFile=-1` 越界读 `argv[-1]` → 0xC0000005（ucrtbased.dll），改为 `firstFile >= 0 && firstFile < argc`
+- ✅ **默认播放视频**：`kDefaultVideo` 常量改为项目根 `a4c277.mp4`（142s），无参数启动直接播放
+- ✅ **桌面点播链路**：9 种视频扩展名文件关联（`FFmpegPlayer.Video`）+ `ffmpegplayer:` 自定义协议 + 桌面「视频点播」junction → `vidio101/`；任意目录双击视频用本播放器打开
+- ✅ **控制栏 UI**：底部上一首 / 暂停 / 下一首按钮 + 可拖动进度条（鼠标事件，SDL_RenderGeometry 绘制）
+- ✅ **循环播放回退**：EOF 后停住（不再自动播下一首），保留手动按钮切歌；单文件播放时 `ExpandPlaylistWithSiblings` 自动扩展同目录视频供按钮切换
+- ✅ **切歌无声修复**：`SwitchMedia` 成功路径重置 `audioAbort`（原成功路径不重置 → 新音频流全部被丢弃 → 无声）
+- ✅ **字体路径修复**：`SDL_GetBasePath()` 定位 `Font/simhei.ttf`（任意工作目录 / 文件关联启动均正常出字）
+- ✅ **局域网摄像头直播链路**：mediamtx（RTSP:8554）+ B 机 ffmpeg 推流 + 本机播放器拉流，端到端 ~300ms 延迟
+- ⚠️ **缓冲实验已回退**：1~2s 播放端缓冲实测声音断续严重（门控无滞后回环 → 快速 toggle），已回退到稳定低延迟配置（直播 300ms / 队列 500ms）
 
 ---
 
@@ -116,6 +126,8 @@
 | `F` | 全屏 |
 | `ESC` / `Q` | 退出 |
 
+**控制栏（鼠标）**：底部半透明控制条 —— ⏮ 上一首 / ⏯ 暂停恢复 / ⏭ 下一首；点击进度条或拖动滑块 seek。
+
 ---
 
 ## 命令行用法
@@ -129,7 +141,7 @@ FFmpeg_text_claw.exe --hls file.mp4             # 播放同时输出 HLS（hls_o
 FFmpeg_text_claw.exe --push rtmp://host/live/stream file.mp4   # 播放同时 RTMP 推流
 ```
 
-不带参数时播放默认测试视频 `D:\FFmpeg\ffmpeg\test_audio.mp4`（代码内 kDefaultVideo 常量，可自行修改）。
+不带参数时播放默认视频 `D:\application\visual studio\product\FFmpeg_text_claw\a4c277.mp4`（代码内 `kDefaultVideo` 常量，硬编码绝对路径，可自行修改）。
 
 ---
 
@@ -271,6 +283,13 @@ FFmpeg_text_claw
 ├── FontManager.h / .cpp     # SDL_ttf 中文字体
 ├── Screenshot.h / .cpp      # 截图（废弃，由 ScreenshotManager 取代）
 ├── PlayerState.h            # 播放状态枚举
+├── Config\                 # ConfigManager（player.json / stream.json 轻量 JSON 解析）
+├── Input\                  # InputSource 工厂：FileInput / NetworkInput / CameraInput / RTSPClient
+├── Network\                # NetworkBuffer / BufferController / NetworkStatistics / StreamMonitor / RTMPPublisher
+├── Hardware\               # CUDAContext / HardwareDecoder（硬解 + 软解回退）
+├── Encoder\                # VideoEncoder（x264/x265/nvenc）/ AudioEncoder（AAC/Opus）
+├── Muxer\                  # FLVMuxer / HLSMuxer（录制 / 推流 / HLS 输出）
+├── Filter\                 # FilterGraph / VideoFilter / AudioFilter（avfilter 封装）
 ├── Audio\                  # PCMQueue / SpeedController / VolumeController / AudioSpeedController
 ├── Playlist\               # PlaylistManager（多文件 + 自动连播）
 ├── Queue\                  # PacketQueue / FrameQueue
@@ -319,4 +338,9 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 - ✅（2026-08-10）**13 帧渲染冻结根因定位并修复**（git bisect → 8e006b7 引入）：队列 `Pop` 缺 `notify_all()` 导致无超时谓词等待的生产者永久阻塞（commit 097e8ba）；4 阶段回归 15/16 PASS，RTSP 连续渲染恢复
 - 播放器 UI 完善
 - 真实字幕文件端到端验证（.srt 渲染已实现，尚未用真实文件回归）
+- RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）
+
+- ✅（2026-08-14）**稳定版收尾（8.14）**：无参数崩溃修复、默认视频 a4c277.mp4、桌面点播链路（文件关联 + ffmpegplayer: 协议）、控制栏 UI、循环回退（EOF 停住）、切歌无声修复（audioAbort）、字体路径修复（SDL_GetBasePath）、局域网摄像头直播链路验证 —— 已提交 GitHub
+- ✅（2026-08-14）**缓冲实验回退**：1~2s 播放端缓冲实测声音断续（门控无滞后回环 → pause/resume 快速震荡），回退到稳定低延迟配置；后续如需继续，方向为滞后回环（起步攒到 highWater 再放行、跌破极低水位才重暂停）
+- CUDA 硬解 `av_hwframe_transfer_data failed: Invalid argument`（hardware_decode=true 时每帧，Debug 复现）待修
 - RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）

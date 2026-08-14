@@ -131,6 +131,9 @@ public:
     // 当前播放列表路径（Init / SwitchMedia 用）
     const std::string& GetCurrentPath() const;
 
+    // 8.14 loop: expand single-file playlist with folder siblings
+    void ExpandPlaylistWithSiblings();
+
     // ---------- 字幕（6.9） ----------
 
     // 开关字幕显示
@@ -245,6 +248,31 @@ public:
     // ---------- 渲染 / OSD 访问 ----------
 
     SDL_Window* GetWindow() const;
+
+    // ---------- Control bar UI (8.14) ----------
+    struct ControlBarState
+    {
+        bool visible = true;          // always shown
+
+        bool seekDragging = false;    // progress bar dragging
+
+        double seekPreview = -1.0;    // drag preview time (s)
+
+        int hoverButton = 0;          // 0=none 1=prev 2=play/pause 3=next
+
+        SDL_Rect prevBtn{};           // prev button hit rect
+
+        SDL_Rect playBtn{};           // play/pause button hit rect
+
+        SDL_Rect nextBtn{};           // next button hit rect
+
+        SDL_Rect track{};             // progress track hit rect
+    };
+
+    ControlBarState& GetControlBar()
+    {
+        return uiBar;
+    }
 
     int GetVideoWidth() const;
 
@@ -578,6 +606,9 @@ private:
     std::unique_ptr<FontManager> fontManager;
 
     std::unique_ptr<OSDManager> osdManager;
+
+    // control bar UI state (8.14)
+    ControlBarState uiBar;
 
     // ---------- 成员：播放状态 ----------
 

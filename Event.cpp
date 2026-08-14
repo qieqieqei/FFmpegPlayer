@@ -218,6 +218,149 @@ void HandleEvent(
             break;
         }
 
+        case SDL_MOUSEBUTTONDOWN:
+        {
+            if (event.button.button ==
+                SDL_BUTTON_LEFT)
+            {
+                Player::ControlBarState& ui =
+                    player->GetControlBar();
+
+                SDL_Point pt = {
+                    event.button.x,
+                    event.button.y
+                };
+
+                if (SDL_PointInRect(
+                    &pt, &ui.prevBtn))
+                {
+                    player->PlayPrevious();
+                }
+                else if (SDL_PointInRect(
+                    &pt, &ui.playBtn))
+                {
+                    player->TogglePause();
+                }
+                else if (SDL_PointInRect(
+                    &pt, &ui.nextBtn))
+                {
+                    player->PlayNext();
+                }
+                else if (SDL_PointInRect(
+                    &pt, &ui.track))
+                {
+                    // start dragging the seek bar
+                    ui.seekDragging = true;
+
+                    double ratio =
+                        (double)(pt.x - ui.track.x) /
+                        (double)ui.track.w;
+
+                    if (ratio < 0.0)
+                    {
+                        ratio = 0.0;
+                    }
+
+                    if (ratio > 1.0)
+                    {
+                        ratio = 1.0;
+                    }
+
+                    ui.seekPreview =
+                        ratio *
+                        player->GetDuration();
+                }
+            }
+
+            break;
+        }
+
+        case SDL_MOUSEMOTION:
+        {
+            Player::ControlBarState& ui =
+                player->GetControlBar();
+
+            if (ui.seekDragging)
+            {
+                // update drag preview only
+                SDL_Point pt = {
+                    event.motion.x,
+                    event.motion.y
+                };
+
+                double ratio =
+                    (double)(pt.x - ui.track.x) /
+                    (double)ui.track.w;
+
+                if (ratio < 0.0)
+                {
+                    ratio = 0.0;
+                }
+
+                if (ratio > 1.0)
+                {
+                    ratio = 1.0;
+                }
+
+                ui.seekPreview =
+                    ratio *
+                    player->GetDuration();
+            }
+            else
+            {
+                // update hover highlight
+                SDL_Point pt = {
+                    event.motion.x,
+                    event.motion.y
+                };
+
+                ui.hoverButton = 0;
+
+                if (SDL_PointInRect(
+                    &pt, &ui.prevBtn))
+                {
+                    ui.hoverButton = 1;
+                }
+                else if (SDL_PointInRect(
+                    &pt, &ui.playBtn))
+                {
+                    ui.hoverButton = 2;
+                }
+                else if (SDL_PointInRect(
+                    &pt, &ui.nextBtn))
+                {
+                    ui.hoverButton = 3;
+                }
+            }
+
+            break;
+        }
+
+        case SDL_MOUSEBUTTONUP:
+        {
+            if (event.button.button ==
+                SDL_BUTTON_LEFT)
+            {
+                Player::ControlBarState& ui =
+                    player->GetControlBar();
+
+                if (ui.seekDragging)
+                {
+                    ui.seekDragging = false;
+
+                    if (ui.seekPreview >= 0.0)
+                    {
+                        player->RequestSeek(
+                            ui.seekPreview);
+                    }
+
+                    ui.seekPreview = -1.0;
+                }
+            }
+
+            break;
+        }
+
         default:
             break;
         }

@@ -23,7 +23,7 @@
 
 // 默认测试视频（无配置文件 / 无命令行参数时使用）
 static const char* kDefaultVideo =
-    R"(D:\FFmpeg\ffmpeg\test_audio.mp4)";
+    R"(D:\application\visual studio\product\FFmpeg_text_claw\a4c277.mp4)";
 
 int main(
     int argc,
@@ -114,7 +114,7 @@ int main(
 
     // 注意：选项（--record/--hls/--push/-v/--log-file）可能出现在文件之后，
     // 构建列表时必须跳过，否则会被当成播放文件（EOF 后自动播到选项名而失败）
-    if (firstFile < argc)
+    if (firstFile >= 0 && firstFile < argc)
     {
         for (int i = firstFile; i < argc; i++)
         {
@@ -167,6 +167,9 @@ int main(
             player.AddToPlaylist(kDefaultVideo);
         }
     }
+
+    // 8.14 loop: single file -> expand with folder siblings
+    player.ExpandPlaylistWithSiblings();
 
     // ---------- 打开第一个文件 ----------
 

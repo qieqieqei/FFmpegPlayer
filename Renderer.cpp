@@ -146,6 +146,12 @@ bool RenderFrame(
         renderer,
         player);
 
+    // ---------- Control bar (8.14) ----------
+
+    RenderControlBar(
+        renderer,
+        player);
+
     SDL_RenderPresent(renderer);
 
     // ---------- 窗口标题 ----------
@@ -350,4 +356,350 @@ void RenderOSD(
 
     osd->Render(
         renderer);
+}
+
+// ============================================================
+// Control bar (8.14): prev / play-pause / next + seek bar
+// ============================================================
+
+static void FillTriangle(
+    SDL_Renderer* renderer,
+    int x1,
+    int y1,
+    int x2,
+    int y2,
+    int x3,
+    int y3)
+{
+    SDL_Vertex verts[3];
+
+    SDL_Color col = { 255, 255, 255, 255 };
+
+    verts[0].position = { (float)x1, (float)y1 };
+    verts[0].color = col;
+    verts[0].tex_coord = { 0.0f, 0.0f };
+
+    verts[1].position = { (float)x2, (float)y2 };
+    verts[1].color = col;
+    verts[1].tex_coord = { 0.0f, 0.0f };
+
+    verts[2].position = { (float)x3, (float)y3 };
+    verts[2].color = col;
+    verts[2].tex_coord = { 0.0f, 0.0f };
+
+    SDL_RenderGeometry(
+        renderer,
+        nullptr,
+        verts,
+        3,
+        nullptr,
+        0);
+}
+
+void RenderControlBar(
+    SDL_Renderer* renderer,
+    Player* player)
+{
+    if (!renderer ||
+        !player)
+    {
+        return;
+    }
+
+    SDL_Window* window =
+        player->GetWindow();
+
+    if (!window)
+    {
+        return;
+    }
+
+    int winW = 0;
+
+    int winH = 0;
+
+    SDL_GetWindowSize(
+        window,
+        &winW,
+        &winH);
+
+    if (winW <= 0 || winH <= 0)
+    {
+        return;
+    }
+
+    Player::ControlBarState& ui =
+        player->GetControlBar();
+
+    const int barH = 46;             // bar height
+
+    const int btnSize = 34;          // button size
+
+    const int btnY =
+        winH - barH + 6;
+
+    const int btnGap = 8;
+
+    const int leftX = 14;
+
+    // ---------- layout (single source of truth) ----------
+
+    ui.prevBtn = {
+        leftX,
+        btnY,
+        btnSize,
+        btnSize
+    };
+
+    ui.playBtn = {
+        leftX + btnSize + btnGap,
+        btnY,
+        btnSize,
+        btnSize
+    };
+
+    ui.nextBtn = {
+        leftX + 2 * (btnSize + btnGap),
+        btnY,
+        btnSize,
+        btnSize
+    };
+
+    const int trackX =
+        leftX + 3 * (btnSize + btnGap) -
+        btnGap + 10;
+
+    const int trackW =
+        winW - trackX - 14;
+
+    const int trackH = 6;
+
+    const int trackY = winH - 24;
+
+    ui.track = {
+        trackX,
+        trackY - 8,                 // taller hit area
+        trackW,
+        trackH + 16
+    };
+
+    // ---------- background ----------
+
+    SDL_SetRenderDrawBlendMode(
+        renderer,
+        SDL_BLENDMODE_BLEND);
+
+    SDL_Rect bg = {
+        0,
+        winH - barH,
+        winW,
+        barH
+    };
+
+    SDL_SetRenderDrawColor(
+        renderer,
+        0, 0, 0, 150);
+
+    SDL_RenderFillRect(
+        renderer,
+        &bg);
+
+    // ---------- progress ----------
+
+    double duration =
+        player->GetDuration();
+
+    double progress =
+        player->GetProgress();
+
+    if (duration > 0.0)
+    {
+        if (ui.seekDragging &&
+            ui.seekPreview >= 0.0)
+        {
+            progress =
+                ui.seekPreview / duration;
+        }
+
+        if (progress < 0.0)
+        {
+            progress = 0.0;
+        }
+
+        if (progress > 1.0)
+        {
+            progress = 1.0;
+        }
+
+        SDL_Rect trackBg = {
+            trackX,
+            trackY,
+            trackW,
+            trackH
+        };
+
+        SDL_SetRenderDrawColor(
+            renderer,
+            60, 60, 60, 220);
+
+        SDL_RenderFillRect(
+            renderer,
+            &trackBg);
+
+        int playedW =
+            (int)(trackW * progress);
+
+        if (playedW > 0)
+        {
+            SDL_Rect played = {
+                trackX,
+                trackY,
+                playedW,
+                trackH
+            };
+
+            SDL_SetRenderDrawColor(
+                renderer,
+                80, 160, 255, 255);
+
+            SDL_RenderFillRect(
+                renderer,
+                &played);
+        }
+
+        // knob
+        int knobX =
+            trackX + playedW - 4;
+
+        SDL_Rect knob = {
+            knobX,
+            trackY - 3,
+            8,
+            trackH + 6
+        };
+
+        SDL_SetRenderDrawColor(
+            renderer,
+            255, 255, 255, 255);
+
+        SDL_RenderFillRect(
+            renderer,
+            &knob);
+    }
+
+    // ---------- buttons ----------
+
+    bool paused =
+        (player->GetState() ==
+        PlayerState::Paused);
+
+    // hover highlight
+    if (ui.hoverButton == 1)
+    {
+        SDL_SetRenderDrawColor(
+            renderer,
+            255, 255, 255, 40);
+
+        SDL_RenderFillRect(
+            renderer,
+            &ui.prevBtn);
+    }
+    else if (ui.hoverButton == 2)
+    {
+        SDL_SetRenderDrawColor(
+            renderer,
+            255, 255, 255, 40);
+
+        SDL_RenderFillRect(
+            renderer,
+            &ui.playBtn);
+    }
+    else if (ui.hoverButton == 3)
+    {
+        SDL_SetRenderDrawColor(
+            renderer,
+            255, 255, 255, 40);
+
+        SDL_RenderFillRect(
+            renderer,
+            &ui.nextBtn);
+    }
+
+    int cx = 0;
+
+    int cy = 0;
+
+    // prev icon: two left triangles
+    cx = ui.prevBtn.x + ui.prevBtn.w / 2;
+
+    cy = ui.prevBtn.y + ui.prevBtn.h / 2;
+
+    FillTriangle(
+        renderer,
+        cx - 8, cy - 8,
+        cx - 8, cy + 8,
+        cx + 2, cy);
+
+    FillTriangle(
+        renderer,
+        cx - 2, cy - 8,
+        cx - 2, cy + 8,
+        cx + 8, cy);
+
+    // next icon: two right triangles
+    cx = ui.nextBtn.x + ui.nextBtn.w / 2;
+
+    cy = ui.nextBtn.y + ui.nextBtn.h / 2;
+
+    FillTriangle(
+        renderer,
+        cx + 8, cy - 8,
+        cx + 8, cy + 8,
+        cx - 2, cy);
+
+    FillTriangle(
+        renderer,
+        cx + 2, cy - 8,
+        cx + 2, cy + 8,
+        cx - 8, cy);
+
+    // play / pause icon
+    cx = ui.playBtn.x + ui.playBtn.w / 2;
+
+    cy = ui.playBtn.y + ui.playBtn.h / 2;
+
+    if (paused)
+    {
+        // play: right triangle
+        FillTriangle(
+            renderer,
+            cx - 4, cy - 9,
+            cx - 4, cy + 9,
+            cx + 10, cy);
+    }
+    else
+    {
+        // pause: two bars
+        SDL_Rect bar1 = {
+            cx - 8,
+            cy - 9,
+            5,
+            18
+        };
+
+        SDL_Rect bar2 = {
+            cx + 3,
+            cy - 9,
+            5,
+            18
+        };
+
+        SDL_RenderFillRect(
+            renderer,
+            &bar1);
+
+        SDL_RenderFillRect(
+            renderer,
+            &bar2);
+    }
 }

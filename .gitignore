@@ -376,3 +376,9 @@ sk_*.txt
 
 # 8.4 compile-check output (not deployed)
 build_check/
+# 8.14: 本地媒体素材 / 编辑备份（不入库）
+a4c277.mp4
+vidio101/
+*.bak_zero
+_scan_ptrs.ps1
+build_log_*.txt

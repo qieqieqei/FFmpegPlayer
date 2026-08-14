@@ -39,3 +39,8 @@ void UpdateWindowTitle(
 void RenderOSD(
     SDL_Renderer* renderer,
     Player* player);
+
+// 绘制底部控制栏（上一个 / 暂停 / 下一个 + 可拖动进度条，8.14）
+void RenderControlBar(
+    SDL_Renderer* renderer,
+    Player* player);

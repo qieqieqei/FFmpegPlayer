@@ -10,8 +10,10 @@
 #include <sstream>
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
+#include <vector>
 
 #include "Network/StreamMonitor.h"
 #include "Hardware/CUDAContext.h"
@@ -25,7 +27,7 @@ Player::~Player()
     Close();
 }
 
-// 从编码器上下文拷贝一份 codecpar（调用方 avcodec_parameters_free 释放）
+// 从编码器上下文拷贝一�?codecpar（调用方 avcodec_parameters_free 释放�?
 static AVCodecParameters* CopyCodecPar(
     AVCodecContext* ctx)
 {
@@ -54,16 +56,16 @@ static AVCodecParameters* CopyCodecPar(
 }
 
 // ============================================================
-// 配置加载（7.11）
+// 配置加载�?.11�?
 //
-// 读取 exe 目录 / 当前目录下的 player.json 与 stream.json，
-// 文件缺失时使用内置默认值（不报错）。
-// 应在 Init 之前调用；可多次调用（重新加载）。
+// 读取 exe 目录 / 当前目录下的 player.json �?stream.json�?
+// 文件缺失时使用内置默认值（不报错）�?
+// 应在 Init 之前调用；可多次调用（重新加载）�?
 // ============================================================
 
 bool Player::LoadConfig()
 {
-    // 常驻：仅创建一次
+    // 常驻：仅创建一�?
     if (!configManager)
     {
         configManager =
@@ -82,7 +84,7 @@ bool Player::LoadConfig()
 
     // ---------- 应用配置 ----------
 
-    // 播放速度（0.5 ~ 2.0）
+    // 播放速度�?.5 ~ 2.0�?
     if (cfg.playbackSpeed > 0.1 &&
         cfg.playbackSpeed <= 2.0)
     {
@@ -90,7 +92,7 @@ bool Player::LoadConfig()
             cfg.playbackSpeed;
     }
 
-    // 音量（0~100）
+    // 音量�?~100�?
     if (cfg.volume >= 0 &&
         cfg.volume <= 100)
     {
@@ -115,7 +117,7 @@ ConfigManager* Player::GetConfigManager() const
 }
 
 // ============================================================
-// 初始化
+// 初始�?
 // ============================================================
 
 bool Player::Init(
@@ -125,13 +127,31 @@ bool Player::Init(
 
     // ---------- 常驻对象（不随媒体切换销毁） ----------
 
-    // 字体管理器
+    // 字体管理�?
     fontManager =
         std::make_unique<FontManager>();
 
-    if (!fontManager->Init(
-        "Font/simhei.ttf",
-        24))
+    // Font path: prefer exe dir (association launch may have cwd = video dir)
+    std::string fontPath = "Font/simhei.ttf";
+
+    if (char* basePath = SDL_GetBasePath())
+    {
+        fontPath = std::string(basePath) +
+            "Font/simhei.ttf";
+
+        SDL_free(basePath);
+    }
+
+    bool fontOk = fontManager->Init(
+        fontPath, 24);
+
+    if (!fontOk && fontPath != "Font/simhei.ttf")
+    {
+        fontOk = fontManager->Init(
+            "Font/simhei.ttf", 24);
+    }
+
+    if (!fontOk)
     {
         ErrorHandler::Log(
             ErrorTag::Player,
@@ -140,7 +160,7 @@ bool Player::Init(
         return false;
     }
 
-    // OSD 管理器
+    // OSD 管理�?
     osdManager =
         std::make_unique<OSDManager>();
 
@@ -154,23 +174,23 @@ bool Player::Init(
         return false;
     }
 
-    // 同步控制器
+    // 同步控制�?
     syncController =
         std::make_unique<SyncController>();
 
-    // 截图管理器
+    // 截图管理�?
     screenshotManager =
         std::make_unique<ScreenshotManager>();
 
-    // Seek 控制器
+    // Seek 控制�?
     seekController =
         std::make_unique<SeekController>();
 
-    // 网络流统计（7.2）
+    // 网络流统计（7.2�?
     networkStatistics =
         std::make_unique<NetworkStatistics>();
 
-    // 网络缓冲控制（7.3）
+    // 网络缓冲控制�?.3�?
     bufferController =
         std::make_unique<BufferController>();
 
@@ -185,19 +205,19 @@ bool Player::Init(
             configManager->GetStreamConfig());
     }
 
-    // 硬件加速探测（7.7）：CUDA -> D3D11VA -> DXVA2，
-    // 失败不影响播放（解码仍走软解）
+    // 硬件加速探测（7.7）：CUDA -> D3D11VA -> DXVA2�?
+    // 失败不影响播放（解码仍走软解�?
     cudaContext =
         std::make_unique<CUDAContext>();
 
     hardwareReady =
         cudaContext->Init();
 
-    // 字幕管理器
+    // 字幕管理�?
     subtitleManager =
         std::make_unique<SubtitleManager>();
 
-    // 播放列表管理器（可能已被 AddToPlaylist 提前创建）
+    // 播放列表管理器（可能已被 AddToPlaylist 提前创建�?
     if (!playlistManager)
     {
         playlistManager =
@@ -219,7 +239,7 @@ bool Player::Init(
 }
 
 // ============================================================
-// 打开媒体（首次初始化 / 播放列表切换共用）
+// 打开媒体（首次初始化 / 播放列表切换共用�?
 // ============================================================
 
 bool Player::OpenMedia(
@@ -228,7 +248,7 @@ bool Player::OpenMedia(
     // 记录当前媒体路径（断网重连目标）
     currentMediaPath = path;
 
-    // 复位队列打断状态
+    // 复位队列打断状�?
     videoPacketQueue.ResetInterrupt();
 
     audioPacketQueue.ResetInterrupt();
@@ -240,7 +260,7 @@ bool Player::OpenMedia(
     demuxer =
         std::make_unique<Demuxer>();
 
-    // 网络参数（rtsp_transport / 超时 / 低延迟，来自 stream.json）
+    // 网络参数（rtsp_transport / 超时 / 低延迟，来自 stream.json�?
     if (configManager)
     {
         demuxer->SetNetworkConfig(
@@ -257,7 +277,7 @@ bool Player::OpenMedia(
         return false;
     }
 
-    // 网络流：按直播/点播设置缓冲策略（7.3）
+    // 网络流：按直�?点播设置缓冲策略�?.3�?
     if (bufferController)
     {
         bufferController->SetLive(
@@ -265,11 +285,11 @@ bool Player::OpenMedia(
     }
 
     // 直播流：Demux<->Decode 队列切换 NetworkBuffer（满丢最旧，低延迟）
-    // 点播/本地文件：保持 PacketQueue 满阻塞背压
+    // 点播/本地文件：保�?PacketQueue 满阻塞背�?
     useNetBuffer =
         demuxer->IsLive();
 
-    // 8.5：同步策略切直播 / 点播（LiveClock vs DropController）
+    // 8.5：同步策略切直播 / 点播（LiveClock vs DropController�?
     if (syncController)
     {
         syncController->SetLiveMode(
@@ -282,7 +302,7 @@ bool Player::OpenMedia(
 
         int targetMs = 300;
 
-        int liveQueueMs = 500;   // 8.5：直播追最新阈值（默认 500ms）
+        int liveQueueMs = 500;   // 8.5：直播追最新阈值（默认 500ms�?
 
         if (configManager)
         {
@@ -298,7 +318,7 @@ bool Player::OpenMedia(
 
         videoNetBuffer.SetMaxSize(cap);
 
-        // 8.5：视频队列时长上限——积压超过 liveQueueMs 丢旧包追最新
+        // 8.5：视频队列时长上限——积压超�?liveQueueMs 丢旧包追最�?
         // （与包数上限叠加；GOP 感知，不撕裂解码链）
         AVStream* liveVStream =
             demuxer->GetVideoStream();
@@ -313,7 +333,7 @@ bool Player::OpenMedia(
 
         // 8.5：音频队列切 LiveMode（PacketQueue 直播模式）：
         // Push 不阻塞，积压超过 liveQueueMs 丢旧包；
-        // 音频帧无解码依赖，丢弃安全
+        // 音频帧无解码依赖，丢弃安�?
         AVStream* liveAStream =
             demuxer->GetAudioStream();
 
@@ -334,7 +354,7 @@ bool Player::OpenMedia(
                 liveQueueMs);
         }
 
-        // 直播目标缓冲（覆盖默认 300ms，按配置）
+        // 直播目标缓冲（覆盖默�?300ms，按配置�?
         if (bufferController)
         {
             bufferController->SetTargetBufferMs(
@@ -356,7 +376,7 @@ bool Player::OpenMedia(
         networkStatistics->Reset();
     }
 
-    // 流媒体监控：切换媒体时复位告警 / 活性计时
+    // 流媒体监控：切换媒体时复位告�?/ 活性计�?
     if (streamMonitor)
     {
         streamMonitor->Reset();
@@ -385,17 +405,17 @@ bool Player::OpenMedia(
     AVStream* vStream =
         demuxer->GetVideoStream();
 
-    // ---------- 视频解码器 ----------
+    // ---------- 视频解码�?----------
 
-    // 硬件解码优先（配置开启 + CUDA 可用 + h264/hevc），
-    // 失败自动回退下面的软解
+    // 硬件解码优先（配置开�?+ CUDA 可用 + h264/hevc），
+    // 失败自动回退下面的软�?
     TryInitHardwareDecoder(
         vStream->codecpar);
 
     videoDecoder =
         std::make_unique<VideoDecoder>();
 
-    // 8.5：直播解码级低延迟（avcodec_open2 传 flags=low_delay）
+    // 8.5：直播解码级低延迟（avcodec_open2 �?flags=low_delay�?
     videoDecoder->SetLowDelay(
         useNetBuffer);
 
@@ -412,8 +432,8 @@ bool Player::OpenMedia(
     AVCodecContext* vCtx =
         videoDecoder->GetContext();
 
-    // 直播重连可能拿到未解析 SPS 的流（0x0）：提前失败，
-    // 走重连循环重试（等下一个关键帧）
+    // 直播重连可能拿到未解�?SPS 的流�?x0）：提前失败�?
+    // 走重连循环重试（等下一个关键帧�?
     if (vCtx->width <= 0 ||
         vCtx->height <= 0)
     {
@@ -425,7 +445,7 @@ bool Player::OpenMedia(
         return false;
     }
 
-    // ---------- 播放统计（5.7） ----------
+    // ---------- 播放统计�?.7�?----------
 
     statistics =
         std::make_unique<PlayerStatistics>();
@@ -435,7 +455,7 @@ bool Player::OpenMedia(
         demuxer->GetVideoIndex(),
         demuxer->GetAudioIndex());
 
-    // 无音频时按帧率匀速播放
+    // 无音频时按帧率匀速播�?
     AVRational fpsRat =
         av_guess_frame_rate(
             demuxer->GetFormatContext(),
@@ -456,9 +476,9 @@ bool Player::OpenMedia(
         << " s"
         << std::endl;
 
-    // ---------- YUV -> RGB 转换器 ----------
+    // ---------- YUV -> RGB 转换�?----------
     // （惰性创建：GetSwsForFrame 按实际帧格式建，
-    //   硬解帧 NV12 / 软解帧 YUV420P 自动适配）
+    //   硬解�?NV12 / 软解�?YUV420P 自动适配�?
 
     rgbLinesize =
         vCtx->width * 3;
@@ -467,7 +487,7 @@ bool Player::OpenMedia(
         std::make_unique<uint8_t[]>(
             rgbLinesize * vCtx->height);
 
-    // ---------- SDL 窗口 / 渲染器 ----------
+    // ---------- SDL 窗口 / 渲染�?----------
 
     if (!InitSDL(
         vCtx->width,
@@ -496,7 +516,7 @@ bool Player::OpenMedia(
         return false;
     }
 
-    // 切换媒体后恢复全屏状态
+    // 切换媒体后恢复全屏状�?
     if (fullscreen)
     {
         SDL_SetWindowFullscreen(
@@ -504,14 +524,14 @@ bool Player::OpenMedia(
             SDL_WINDOW_FULLSCREEN_DESKTOP);
     }
 
-    // ---------- 音频链路（6.0 独立 Audio 线程） ----------
+    // ---------- 音频链路�?.0 独立 Audio 线程�?----------
 
     hasAudioStream =
         demuxer->HasAudio();
 
     if (hasAudioStream)
     {
-        // 音频解码器
+        // 音频解码�?
         audioDecoder =
             std::make_unique<AudioDecoder>();
 
@@ -530,7 +550,7 @@ bool Player::OpenMedia(
 
     if (hasAudioStream)
     {
-        // SDL 音频设备（与重采样器输出一致：48000Hz / 双声道 / S16）
+        // SDL 音频设备（与重采样器输出一致：48000Hz / 双声�?/ S16�?
         audioDevice =
             std::make_unique<AudioDevice>();
 
@@ -554,7 +574,7 @@ bool Player::OpenMedia(
         audioResampler =
             std::make_unique<AudioResampler>();
 
-        // 变速不变调（SOLA），组合包装类
+        // 变速不变调（SOLA），组合包装�?
         speedController =
             std::make_unique<SpeedController>();
 
@@ -577,14 +597,14 @@ bool Player::OpenMedia(
             << std::endl;
     }
 
-    // 8.1：同步控制器绑定音频主时钟（无音频时解绑，
-    // MasterClock 自动回退视频时钟）
+    // 8.1：同步控制器绑定音频主时钟（无音频时解绑�?
+    // MasterClock 自动回退视频时钟�?
     syncController->SetAudioClock(
         audioDevice ?
         audioDevice->GetClock() :
         nullptr);
 
-    // ---------- Seek 控制器绑定 ----------
+    // ---------- Seek 控制器绑�?----------
     // 队列是成员对象（地址不变）；demuxer 每次重建需重新绑定
 
     seekController->Attach(
@@ -593,7 +613,7 @@ bool Player::OpenMedia(
         &audioPacketQueue,
         &videoFrameQueue);
 
-    // ---------- 字幕自动加载（同路径 .srt / .ass） ----------
+    // ---------- 字幕自动加载（同路径 .srt / .ass�?----------
 
     if (subtitleManager)
     {
@@ -619,7 +639,7 @@ bool Player::OpenMedia(
         }
     }
 
-    // ---------- 状态复位 ----------
+    // ---------- 状态复�?----------
 
     currentTime = 0.0;
 
@@ -645,7 +665,7 @@ bool Player::OpenMedia(
 }
 
 // ============================================================
-// 渲染主循环
+// 渲染主循�?
 // ============================================================
 
 bool Player::Run()
@@ -678,7 +698,7 @@ bool Player::Run()
             quit,
             this);
 
-        // ---------- 播放列表切换请求（`[` / `]`） ----------
+        // ---------- 播放列表切换请求（`[` / `]`�?----------
 
         if (switchRequested)
         {
@@ -694,7 +714,7 @@ bool Player::Run()
 
             if (SwitchMedia(nextPath))
             {
-                // 重启三线程
+                // 重启三线�?
                 if (!StartThreads())
                 {
                     quit = true;
@@ -723,7 +743,7 @@ bool Player::Run()
             continue;
         }
 
-        // ---------- 断网重连（8.3）：Demux 线程检测到断流 ----------
+        // ---------- 断网重连�?.3）：Demux 线程检测到断流 ----------
 
         if (reconnectRequested.load())
         {
@@ -734,8 +754,8 @@ bool Player::Run()
                 << currentMediaPath
                 << std::endl;
 
-            // 循环重试直到成功 / 超限 / 退出
-            // 注意：不用 this->quit——SwitchMedia 内部 StopThreads 会置位它
+            // 循环重试直到成功 / 超限 / 退�?
+            // 注意：不�?this->quit——SwitchMedia 内部 StopThreads 会置位它
             bool ok = false;
 
             while (!ok && !quit)
@@ -789,9 +809,9 @@ bool Player::Run()
                     int delayMs =
                         cfg.reconnectDelayMs;
 
-                    // 8.4：可选指数退避（factor > 1.0 时开启）：
-                    // delay * factor^(attempts-1)，封顶 30s，
-                    // 长时间断网避免高频重试打服务器
+                    // 8.4：可选指数退避（factor > 1.0 时开启）�?
+                    // delay * factor^(attempts-1)，封�?30s�?
+                    // 长时间断网避免高频重试打服务�?
                     if (cfg.reconnectBackoffFactor > 1.0)
                     {
                         double backoff =
@@ -817,7 +837,7 @@ bool Player::Run()
                             static_cast<int>(backoff);
                     }
 
-                    // maxAttempts <= 0：无限重试（24h 场景）
+                    // maxAttempts <= 0：无限重试（24h 场景�?
                     if (maxAttempts > 0 &&
                         attempts >= maxAttempts)
                     {
@@ -825,7 +845,7 @@ bool Player::Run()
                             ErrorTag::Player,
                             "Reconnect failed, give up");
 
-                        // 停止播放，等待用户操作
+                        // 停止播放，等待用户操�?
                         demuxEof.store(true);
 
                         break;
@@ -857,7 +877,7 @@ bool Player::Run()
                     GetCurrentTime()));
         }
 
-        // ---------- 取一帧 ----------
+        // ---------- 取一�?----------
 
         // 8.4：FramePtr 返回所有权，无需手动释放
         FramePtr frame;
@@ -868,7 +888,7 @@ bool Player::Run()
             while ((frame =
                 videoFrameQueue.Pop(0)))
             {
-                // 旧帧（pts 小于目标）：丢弃（RAII 自动释放）
+                // 旧帧（pts 小于目标）：丢弃（RAII 自动释放�?
                 if (GetFramePts(frame.get()) <
                     seekPosition - 0.05)
                 {
@@ -877,7 +897,7 @@ bool Player::Run()
                     continue;
                 }
 
-                // 到达新位置的第一帧
+                // 到达新位置的第一�?
                 break;
             }
 
@@ -890,12 +910,12 @@ bool Player::Run()
         }
         else
         {
-            // 正常取帧（最多等 10ms）
+            // 正常取帧（最多等 10ms�?
             frame =
                 videoFrameQueue.Pop(10);
         }
 
-        // ---------- 没有帧 ----------
+        // ---------- 没有�?----------
 
         if (!frame)
         {
@@ -932,8 +952,8 @@ bool Player::Run()
                             SDL_GetTicks64());
                 }
 
-                // CLI 输出模式（--record/--hls/--push）：
-                // EOF 后停留 3 秒（看最后一帧）再自动退出
+                // CLI 输出模式�?-record/--hls/--push）：
+                // EOF 后停�?3 秒（看最后一帧）再自动退�?
                 if (autoQuitOnEof &&
                     eofWaitStartMs >= 0 &&
                     static_cast<int64_t>(
@@ -945,48 +965,6 @@ bool Player::Run()
                     continue;
                 }
 
-                // 自动播放：切下一首
-                if (playlistManager &&
-                    playlistManager->IsAutoPlay() &&
-                    !autoAdvancing &&
-                    playlistManager->Count() > 1)
-                {
-                    autoAdvancing = true;
-
-                    playlistManager->Next();
-
-                    Logger::Info()
-                        << "[Player] Auto play next : "
-                        << playlistManager->GetCurrent()
-                        << std::endl;
-
-                    if (SwitchMedia(
-                        playlistManager->GetCurrent()))
-                    {
-                        // 重启三线程
-                        if (!StartThreads())
-                        {
-                            quit = true;
-
-                            continue;
-                        }
-
-                        state = PlayerState::Playing;
-
-                        if (audioDevice)
-                        {
-                            audioDevice->SetPaused(false);
-                        }
-
-                        autoAdvancing = false;
-                    }
-                    else
-                    {
-                        Logger::Info()
-                            << "[Player] Auto play switch failed"
-                            << std::endl;
-                    }
-                }
 
                 SDL_Delay(10);
 
@@ -998,7 +976,7 @@ bool Player::Run()
             continue;
         }
 
-        // ---------- Seek 期间取到旧帧，丢弃 ----------
+        // ---------- Seek 期间取到旧帧，丢�?----------
 
         if (seekPending &&
             GetFramePts(frame.get()) < seekPosition - 0.05)
@@ -1009,12 +987,12 @@ bool Player::Run()
             continue;
         }
 
-        // ---------- 音视频同步（5.1） ----------
+        // ---------- 音视频同步（5.1�?----------
 
         double pts =
             GetFramePts(frame.get());
 
-        // 网络统计：解码出一帧（输入 FPS）
+        // 网络统计：解码出一帧（输入 FPS�?
         if (networkStatistics)
         {
             networkStatistics->OnFrameDecoded();
@@ -1029,9 +1007,9 @@ bool Player::Run()
         if (HasAudio() &&
             !isStep)
         {
-            // 8.4（评审五）：音频墙钟漂移渐进校正。
-            // 约每秒一次（60 帧 @60fps），把媒体时间轴向真实时间
-            // 拉回（单次 ≤5ms 无感知），长期播放进度不漂移
+            // 8.4（评审五）：音频墙钟漂移渐进校正�?
+            // 约每秒一次（60 �?@60fps），把媒体时间轴向真实时�?
+            // 拉回（单�?�?ms 无感知），长期播放进度不漂移
             static int driftTick = 0;
 
             if (++driftTick >= 60)
@@ -1044,7 +1022,7 @@ bool Player::Run()
                 }
             }
 
-            // MasterClock 自动选择主时钟（音频优先）
+            // MasterClock 自动选择主时钟（音频优先�?
             // 8.4：传帧时长做 ffplay 级目标延迟调整（评审五）
             double delay =
                 syncController->GetVideoDelay(
@@ -1053,7 +1031,7 @@ bool Player::Run()
 
             if (syncController->ShouldDrop(delay))
             {
-                // 视频落后：丢帧追赶（DropController 防抖）
+                // 视频落后：丢帧追赶（DropController 防抖�?
                 syncController->OnFrameDropped();
 
                 statistics->OnFrameDropped();
@@ -1063,7 +1041,7 @@ bool Player::Run()
             }
 
             // 视频超前：等待（分片等待，保持事件响应）
-            // 8.5：直播模式不等待——延迟超过阈值已由 LiveClock 丢帧，
+            // 8.5：直播模式不等待——延迟超过阈值已�?LiveClock 丢帧�?
             //      阈值内的轻微超前直接渲染（追最新，最低延迟）
             while (delay > 0.0 &&
                 !quit &&
@@ -1094,7 +1072,7 @@ bool Player::Run()
                 delay -= chunk;
             }
 
-            // 等待期间状态变化：放弃这一帧（RAII 自动释放）
+            // 等待期间状态变化：放弃这一帧（RAII 自动释放�?
             if (state == PlayerState::Paused ||
                 seekPending ||
                 seekController->IsHandled())
@@ -1104,7 +1082,7 @@ bool Player::Run()
         }
         else if (!isStep)
         {
-            // 无音频：按帧率匀速播放
+            // 无音频：按帧率匀速播�?
             double delay =
                 speedController ?
                 speedController->GetFrameDelay(
@@ -1127,20 +1105,20 @@ bool Player::Run()
 
         statistics->OnFrameRendered();
 
-        // 网络统计：渲染了一帧（输出 FPS）
+        // 网络统计：渲染了一帧（输出 FPS�?
         if (networkStatistics)
         {
             networkStatistics->OnFrameRendered();
         }
 
-        // 渲染心跳（Debug 级别：默认不打印，-v 开启）
+        // 渲染心跳（Debug 级别：默认不打印�?v 开启）
         Logger::Debug()
             << "[Player] Render frame pts : "
             << pts
             << " s"
             << std::endl;
 
-        // 保存副本供截图（AVFramePtr 自动释放旧帧）
+        // 保存副本供截图（AVFramePtr 自动释放旧帧�?
         lastFrame.reset(
             av_frame_clone(frame.get()));
 
@@ -1150,7 +1128,7 @@ bool Player::Run()
         // 更新缓冲统计
         UpdateStatistics();
 
-        // 直播缓冲状态跳变提示（7.3）：进入"缓冲中"时一次性打印
+        // 直播缓冲状态跳变提示（7.3）：进入"缓冲�?时一次性打�?
         if (useNetBuffer &&
             bufferController &&
             bufferController->ConsumeBufferingEvent())
@@ -1161,7 +1139,7 @@ bool Player::Run()
         }
     }
 
-    // ---------- 退出清理 ----------
+    // ---------- 退出清�?----------
 
     Logger::Info()
         << "[Player] Quit loop, stopping threads..."
@@ -1187,15 +1165,15 @@ bool Player::Run()
 
 void Player::Close()
 {
-    // 确保线程先停止
+    // 确保线程先停�?
     audioAbort.store(true);
 
     StopThreads();
 
-    // 释放媒体资源（窗口 / 解码器 / 音频链 / 队列）
+    // 释放媒体资源（窗�?/ 解码�?/ 音频�?/ 队列�?
     ReleaseMedia();
 
-    // ---------- 常驻对象（unique_ptr 自动释放） ----------
+    // ---------- 常驻对象（unique_ptr 自动释放�?----------
 
     osdManager.reset();
 
@@ -1231,14 +1209,14 @@ void Player::Close()
 }
 
 // ============================================================
-// 播放列表（6.8）
+// 播放列表�?.8�?
 // ============================================================
 
 void Player::AddToPlaylist(
     const std::string& path)
 {
-    // 播放列表可能在 Init 之前就被填充（main 先 Add 后 Init），
-    // 这里惰性创建，避免依赖 Init 的调用顺序
+    // 播放列表可能�?Init 之前就被填充（main �?Add �?Init），
+    // 这里惰性创建，避免依赖 Init 的调用顺�?
     if (!playlistManager)
     {
         playlistManager =
@@ -1246,6 +1224,113 @@ void Player::AddToPlaylist(
     }
 
     playlistManager->AddMedia(path);
+}
+
+void Player::ExpandPlaylistWithSiblings()
+{
+    // 8.14 loop: single-file playlist -> scan same folder
+    // for sibling videos so EOF auto-advance can cycle
+    if (!playlistManager ||
+        playlistManager->Count() != 1)
+    {
+        return;
+    }
+
+    const std::string& current =
+        playlistManager->GetCurrent();
+
+    // network streams: never scan folders
+    if (current.rfind("http://", 0) == 0 ||
+        current.rfind("https://", 0) == 0 ||
+        current.rfind("rtsp://", 0) == 0 ||
+        current.rfind("rtmp://", 0) == 0)
+    {
+        return;
+    }
+
+    std::error_code ec;
+
+    std::filesystem::path dir =
+        std::filesystem::path(current)
+            .parent_path();
+
+    if (dir.empty())
+    {
+        return;
+    }
+
+    static const char* kVideoExts[] = {
+        ".mp4", ".mkv", ".avi", ".mov", ".flv", ".ts",
+        ".wmv", ".webm", ".m4v", ".mpg", ".mpeg",
+        ".rmvb", ".3gp"
+    };
+
+    std::vector<std::string> siblings;
+
+    for (const auto& entry :
+        std::filesystem::directory_iterator(
+            dir, ec))
+    {
+        if (ec)
+        {
+            break;
+        }
+
+        if (!entry.is_regular_file(ec))
+        {
+            continue;
+        }
+
+        std::string ext =
+            entry.path().extension().string();
+
+        bool isVideo = false;
+
+        for (const char* e : kVideoExts)
+        {
+            if (_stricmp(ext.c_str(), e) == 0)
+            {
+                isVideo = true;
+
+                break;
+            }
+        }
+
+        if (!isVideo)
+        {
+            continue;
+        }
+
+        std::string full =
+            entry.path().string();
+
+        if (full == current)
+        {
+            continue;  // already in list
+        }
+
+        siblings.push_back(full);
+    }
+
+    if (siblings.empty())
+    {
+        return;  // keep single file (EOF replays itself)
+    }
+
+    std::sort(
+        siblings.begin(),
+        siblings.end());
+
+    for (const std::string& s : siblings)
+    {
+        playlistManager->AddMedia(s);
+    }
+
+    Logger::Info()
+        << "[Player] Expand playlist : "
+        << playlistManager->Count()
+        << " items"
+        << std::endl;
 }
 
 bool Player::PlayPrevious()
@@ -1256,7 +1341,7 @@ bool Player::PlayPrevious()
         return false;
     }
 
-    // 只登记请求，Run 循环里执行切换（避免线程交叉）
+    // 只登记请求，Run 循环里执行切换（避免线程交叉�?
     switchPath =
         playlistManager->GetCurrent();
 
@@ -1278,7 +1363,7 @@ bool Player::PlayNext()
         return false;
     }
 
-    // 只登记请求，Run 循环里执行切换（避免线程交叉）
+    // 只登记请求，Run 循环里执行切换（避免线程交叉�?
     switchPath =
         playlistManager->GetCurrent();
 
@@ -1316,7 +1401,7 @@ const std::string& Player::GetCurrentPath() const
 }
 
 // ============================================================
-// 字幕（6.9）
+// 字幕�?.9�?
 // ============================================================
 
 void Player::ToggleSubtitle()
@@ -1350,7 +1435,7 @@ bool Player::IsSubtitleEnabled() const
 void Player::RequestSeek(
     double seconds)
 {
-    // 直播流不可 Seek（RTSP/RTMP/直播 HLS）
+    // 直播流不�?Seek（RTSP/RTMP/直播 HLS�?
     if (demuxer &&
         !demuxer->IsSeekable())
     {
@@ -1361,7 +1446,7 @@ void Player::RequestSeek(
         return;
     }
 
-    // 夹在 [0, 时长] 内
+    // 夹在 [0, 时长] �?
     seconds =
         std::max(
             0.0,
@@ -1375,12 +1460,12 @@ void Player::RequestSeek(
         << " s"
         << std::endl;
 
-    // 记录目标（渲染线程丢弃旧帧用）
+    // 记录目标（渲染线程丢弃旧帧用�?
     seekPosition = seconds;
 
     seekPending = true;
 
-    // 让阻塞中的 PushPCM 立即返回（音频线程才能处理 Seek 清理）
+    // 让阻塞中�?PushPCM 立即返回（音频线程才能处�?Seek 清理�?
     audioAbort.store(true);
 
     // 交给 Demux 线程执行
@@ -1409,7 +1494,7 @@ void Player::Pause()
     {
         state = PlayerState::Paused;
 
-        // 暂停声卡（队列继续积压，管线自然停止）
+        // 暂停声卡（队列继续积压，管线自然停止�?
         if (audioDevice)
         {
             audioDevice->SetPaused(true);
@@ -1485,7 +1570,7 @@ void Player::SetPlaybackSpeed(
     // 支持 0.5x / 1x / 1.5x / 2x
     playbackSpeed = speed;
 
-    // 音频变速不变调（SOLA）
+    // 音频变速不变调（SOLA�?
     if (speedController)
     {
         speedController->SetSpeed(speed);
@@ -1592,7 +1677,7 @@ const char* Player::FullScreenToString() const
 }
 
 // ============================================================
-// Seek 状态查询
+// Seek 状态查�?
 // ============================================================
 
 bool Player::HasSeekRequest() const
@@ -1772,7 +1857,7 @@ SwsContext* Player::GetSwsForFrame(
         return swsCtx.get();
     }
 
-    // 变了（软解 YUV420P <-> 硬解 NV12，或新媒体）：重建
+    // 变了（软�?YUV420P <-> 硬解 NV12，或新媒体）：重�?
     swsCtx.reset(
         sws_getContext(
             frame->width,
@@ -1847,22 +1932,22 @@ void Player::UpdateStatistics()
     }
 
     statistics->UpdateBuffers(
-        GetVideoQueueSize(),           // 视频包缓冲（直播=NetworkBuffer）
-        GetAudioQueueSize(),           // 音频包缓冲
-        videoFrameQueue.Size(),            // 视频帧缓冲
+        GetVideoQueueSize(),           // 视频包缓冲（直播=NetworkBuffer�?
+        GetAudioQueueSize(),           // 音频包缓�?
+        videoFrameQueue.Size(),            // 视频帧缓�?
         audioDevice ?
             audioDevice->GetQueuedSize() : 0,   // 音频缓冲（字节）
-        48000,                             // 音频采样率
+        48000,                             // 音频采样�?
         2);                                // 音频声道
 
-    // 视频帧缓冲时长（毫秒）：帧数 * 帧间隔
+    // 视频帧缓冲时长（毫秒）：帧数 * 帧间�?
     statistics->SetVideoBufferMs(
         static_cast<int>(
             videoFrameQueue.Size() *
             videoFrameDuration *
             1000.0));
 
-    // ---------- 网络缓冲监控（7.2 / 7.3） ----------
+    // ---------- 网络缓冲监控�?.2 / 7.3�?----------
 
     if (!networkStatistics ||
         !bufferController)
@@ -1870,14 +1955,14 @@ void Player::UpdateStatistics()
         return;
     }
 
-    // 缓冲水位：包数
+    // 缓冲水位：包�?
     networkStatistics->SetBufferLevel(
         GetVideoQueueSize(),
         GetVideoQueueCapacity());
 
-    // 估算缓冲时长（毫秒）：
-    //   视频：包数 * 帧时长
-    //   音频：缓冲字节 / (采样率 * 声道 * 2字节)
+    // 估算缓冲时长（毫秒）�?
+    //   视频：包�?* 帧时�?
+    //   音频：缓冲字�?/ (采样�?* 声道 * 2字节)
     double bufferedMs =
         GetVideoQueueSize() *
         videoFrameDuration *
@@ -1896,7 +1981,7 @@ void Player::UpdateStatistics()
         }
     }
 
-    // 缓冲控制：水位决策（7.3）
+    // 缓冲控制：水位决策（7.3�?
     bufferController->Update(
         bufferedMs);
 
@@ -1904,7 +1989,7 @@ void Player::UpdateStatistics()
     networkStatistics->SetLatencyMs(
         static_cast<int>(bufferedMs));
 
-    // 流媒体监控：仅网络流巡检（内部按 1s 节流）
+    // 流媒体监控：仅网络流巡检（内部按 1s 节流�?
     if (streamMonitor &&
         demuxer &&
         demuxer->IsNetwork())
@@ -1914,12 +1999,12 @@ void Player::UpdateStatistics()
 }
 
 // ============================================================
-// 直播/点播双路径包队列（7.3）
+// 直播/点播双路径包队列�?.3�?
 //
-//   点播/本地文件：PacketQueue（满阻塞背压，防无界内存）
+//   点播/本地文件：PacketQueue（满阻塞背压，防无界内存�?
 //   直播流：       NetworkBuffer（满丢最旧包，控制延迟上限）
 //
-// 统一入口，Demux / Video / Audio 线程不关心当前模式。
+// 统一入口，Demux / Video / Audio 线程不关心当前模式�?
 // ============================================================
 
 bool Player::PushVideoPacket(
@@ -1931,7 +2016,7 @@ bool Player::PushVideoPacket(
             videoNetBuffer.Push(
                 std::move(pkt));
 
-        // 8.4：同步丢包统计（GOP 段丢包可能一次丢多个）
+        // 8.4：同步丢包统计（GOP 段丢包可能一次丢多个�?
         if (networkStatistics)
         {
             int64_t dropped =
@@ -1960,15 +2045,15 @@ bool Player::PushVideoPacket(
 bool Player::PushAudioPacket(
     PacketPtr&& pkt)
 {
-    // 8.5：直播时 audioPacketQueue 处于 LiveMode——
+    // 8.5：直播时 audioPacketQueue 处于 LiveMode—�?
     // Push 不阻塞，积压超过 live_max_queue_ms 丢旧包；
-    // 点播时保持满阻塞背压。两种模式共用一个队列。
+    // 点播时保持满阻塞背压。两种模式共用一个队列�?
     bool ok =
         audioPacketQueue.Push(
             std::move(pkt),
             MAX_AUDIO_PACKETS);
 
-    // 8.4：同步丢包统计（LiveMode 丢旧包可能一次丢多个）
+    // 8.4：同步丢包统计（LiveMode 丢旧包可能一次丢多个�?
     if (networkStatistics)
     {
         int64_t dropped =
@@ -2003,7 +2088,7 @@ PacketPtr Player::PopVideoPacket(
 PacketPtr Player::PopAudioPacket(
     int timeoutMs)
 {
-    // 8.5：直播/点播统一走 PacketQueue（LiveMode 内部处理丢旧包）
+    // 8.5：直�?点播统一�?PacketQueue（LiveMode 内部处理丢旧包）
     return audioPacketQueue.Pop(timeoutMs);
 }
 
@@ -2048,19 +2133,19 @@ int Player::GetVideoQueueCapacity() const
 }
 
 // ============================================================
-// 输出链：录制 / 推流 / HLS（7.4–7.6 集成）
+// 输出链：录制 / 推流 / HLS�?.4�?.6 集成�?
 //
-// 设计：共享编码器 + 多路输出。
+// 设计：共享编码器 + 多路输出�?
 //   一路视频编码器 + 一路音频编码器（按 stream.json 配置），
 //   编码出的包同时分发给所有活跃输出（录制文件 / RTMP / HLS），
-//   编码只做一次，CPU/GPU 开销最小。
+//   编码只做一次，CPU/GPU 开销最小�?
 //
-// 线程模型：
+// 线程模型�?
 //   Video/Audio 线程每帧加锁调用 FeedOutput*，主线程（事件）
-//   加锁调用 Start/Stop —— outMutex 保证生命周期安全。
+//   加锁调用 Start/Stop —�?outMutex 保证生命周期安全�?
 //
-// 时间戳：输出流 pts 自管理（视频按帧号、音频按样本数），
-//   不依赖源流时间基，保证输出流时间戳单调。
+// 时间戳：输出�?pts 自管理（视频按帧号、音频按样本数）�?
+//   不依赖源流时间基，保证输出流时间戳单调�?
 // ============================================================
 
 bool Player::EnsureOutEncoders()
@@ -2080,7 +2165,7 @@ bool Player::EnsureOutEncoders()
         configManager->GetStreamConfig() :
         StreamConfig();
 
-    // ---------- 视频编码器 ----------
+    // ---------- 视频编码�?----------
 
     if (!outVideoEncoder)
     {
@@ -2128,7 +2213,7 @@ bool Player::EnsureOutEncoders()
             << std::endl;
     }
 
-    // ---------- 音频编码器（无音频流则输出仅视频） ----------
+    // ---------- 音频编码器（无音频流则输出仅视频�?----------
 
     if (!outAudioEncoder &&
         demuxer &&
@@ -2184,7 +2269,7 @@ AVFrame* Player::ToYuv420p(
         return nullptr;
     }
 
-    // 已是 YUV420P：直通，零拷贝
+    // 已是 YUV420P：直通，零拷�?
     if (frame->format == AV_PIX_FMT_YUV420P)
     {
         return frame;
@@ -2256,9 +2341,9 @@ void Player::FeedOutputVideo(
         return;
     }
 
-    // 视频/音频解码线程并发写 muxer，必须加锁
+    // 视频/音频解码线程并发�?muxer，必须加�?
     // （StopAllOutputs 在解码线程停止后调用，锁内调 Flush
-    // 不会死锁）
+    // 不会死锁�?
     std::lock_guard<std::mutex> lock(
         outMutex);
 
@@ -2282,7 +2367,7 @@ void Player::FeedOutputVideo(
         return;
     }
 
-    // 自管理 pts：按帧号递增（time_base = 1/fps）
+    // 自管�?pts：按帧号递增（time_base = 1/fps�?
     yuv->pts =
         outVideoPts++;
 
@@ -2291,15 +2376,15 @@ void Player::FeedOutputVideo(
         return;
     }
 
-    // 取出所有编码输出包并分发
+    // 取出所有编码输出包并分�?
     AVPacket* pkt = nullptr;
 
     while ((pkt =
         outVideoEncoder->GetPacket()) != nullptr)
     {
-        // nvenc 等编码器输出包可能不带 pts/dts
+        // nvenc 等编码器输出包可能不�?pts/dts
         // （AV_NOPTS_VALUE）——统一按输出顺序重建，
-        // 保证 muxer 层时间戳单调（FLV/HLS 依赖）
+        // 保证 muxer 层时间戳单调（FLV/HLS 依赖�?
         pkt->pts =
             outVideoPktIdx;
 
@@ -2311,7 +2396,7 @@ void Player::FeedOutputVideo(
         pkt->time_base =
             outVideoEncoder->GetContext()->time_base;
 
-        // 所有输出都是视频流在前（index 0）
+        // 所有输出都是视频流在前（index 0�?
         pkt->stream_index = 0;
 
         outVideoPktIdx++;
@@ -2330,7 +2415,7 @@ void Player::FeedOutputAudio(
         return;
     }
 
-    // 与 FeedOutputVideo 同一把锁（见其注释）
+    // �?FeedOutputVideo 同一把锁（见其注释）
     std::lock_guard<std::mutex> lock(
         outMutex);
 
@@ -2346,10 +2431,10 @@ void Player::FeedOutputAudio(
         return;
     }
 
-    // 注意：**不要**修改 frame->pts！这是播放路径共享的解码帧，
-    // 改动会让 SyncController 音视频失步（实测 -25s 漂移）。
-    // aac 编码器输出包 pts 继承输入帧 pts（解码帧 pts 正常），
-    // 无需自管理。
+    // 注意�?*不要**修改 frame->pts！这是播放路径共享的解码帧，
+    // 改动会让 SyncController 音视频失步（实测 -25s 漂移）�?
+    // aac 编码器输出包 pts 继承输入�?pts（解码帧 pts 正常），
+    // 无需自管理�?
     if (!outAudioEncoder->Encode(frame))
     {
         return;
@@ -2370,7 +2455,7 @@ void Player::FeedOutputAudio(
                 outAudioPktIdx;
         }
 
-        // 音频包固定写向 index 1（编码器默认 0，必须改）
+        // 音频包固定写�?index 1（编码器默认 0，必须改�?
         pkt->stream_index = 1;
 
         outAudioPktIdx++;
@@ -2389,9 +2474,9 @@ void Player::DispatchVideoPacket(
         return;
     }
 
-    // 注意：av_interleaved_write_frame 会消费并清空 pkt 字段，
-    // 同一包发给多个 muxer 必须逐输出 clone，否则后写的
-    // muxer 拿到 pts=NOPTS/duration=0 的脏包
+    // 注意：av_interleaved_write_frame 会消费并清空 pkt 字段�?
+    // 同一包发给多�?muxer 必须逐输�?clone，否则后写的
+    // muxer 拿到 pts=NOPTS/duration=0 的脏�?
     if (recording && recordMuxer)
     {
         AVPacket* copy =
@@ -2440,7 +2525,7 @@ void Player::DispatchAudioPacket(
 
 void Player::FlushOutEncoders()
 {
-    // 视频编码器尾帧
+    // 视频编码器尾�?
     if (outVideoEncoder)
     {
         outVideoEncoder->Flush();
@@ -2450,7 +2535,7 @@ void Player::FlushOutEncoders()
         while ((pkt =
             outVideoEncoder->GetPacket()) != nullptr)
         {
-            // flush 包同样重建时间戳（编码器输出可能无 pts）
+            // flush 包同样重建时间戳（编码器输出可能�?pts�?
             pkt->pts =
                 outVideoPktIdx;
 
@@ -2472,7 +2557,7 @@ void Player::FlushOutEncoders()
         }
     }
 
-    // 音频编码器尾帧
+    // 音频编码器尾�?
     if (outAudioEncoder)
     {
         outAudioEncoder->Flush();
@@ -2514,7 +2599,7 @@ void Player::StopAllOutputs()
         return;
     }
 
-    // 冲刷尾帧（写给仍在活跃的输出）
+    // 冲刷尾帧（写给仍在活跃的输出�?
     FlushOutEncoders();
 
     if (recordMuxer)
@@ -2615,7 +2700,7 @@ bool Player::StartRecording(
     AVCodecContext* vc =
         outVideoEncoder->GetContext();
 
-    // 编码器上下文 -> codecpar（AddStream 内部拷贝）
+    // 编码器上下文 -> codecpar（AddStream 内部拷贝�?
     AVCodecParameters* vPar =
         CopyCodecPar(vc);
 
@@ -2668,8 +2753,8 @@ void Player::StopRecording()
         return;
     }
 
-    // 先冲刷尾帧（此时 recording 仍为 true，
-    // 尾帧经 Dispatch 写向本路 + 其余活跃输出）
+    // 先冲刷尾帧（此时 recording 仍为 true�?
+    // 尾帧�?Dispatch 写向本路 + 其余活跃输出�?
     FlushOutEncoders();
 
     recording = false;
@@ -2921,7 +3006,7 @@ bool Player::StartHLS(
     hlsMuxer->SetListSize(
         cfg.hlsListSize);
 
-    // 分段文件与 m3u8 同目录（hls_segment_filename 是相对 cwd 的路径，
+    // 分段文件�?m3u8 同目录（hls_segment_filename 是相�?cwd 的路径，
     // 必须显式拼目录，否则 segment 会落到工作目录）
     std::string segPattern = dir;
 
@@ -3036,7 +3121,7 @@ void Player::ToggleHLS()
     StartHLS("hls_out");
 }
 
-// ---------- 状态查询 ----------
+// ---------- 状态查�?----------
 
 bool Player::IsRecording() const
 {
@@ -3054,7 +3139,7 @@ bool Player::IsHLSActive() const
 }
 
 // ============================================================
-// 线程：启动 / 停止
+// 线程：启�?/ 停止
 // ============================================================
 
 bool Player::StartThreads()
@@ -3094,18 +3179,18 @@ void Player::StopThreads()
 
     quit.store(true);
 
-    // 打断所有阻塞调用，唤醒线程退出
+    // 打断所有阻塞调用，唤醒线程退�?
     videoPacketQueue.Interrupt();
 
     audioPacketQueue.Interrupt();
 
     videoFrameQueue.Interrupt();
 
-    // 直播队列（NetworkBuffer）同样打断
+    // 直播队列（NetworkBuffer）同样打�?
     videoNetBuffer.Interrupt();
 
     // 打断网络流的阻塞读取（av_read_frame 会立即返回）
-    // 否则 RTSP/HTTP 断线或超时时 join 会卡死
+    // 否则 RTSP/HTTP 断线或超时时 join 会卡�?
     if (demuxer)
     {
         demuxer->SetAbort(true);
@@ -3132,12 +3217,12 @@ void Player::StopThreads()
 }
 
 // ============================================================
-// Demux 线程主循环
+// Demux 线程主循�?
 //
 //   1. 处理 Seek 请求（优先）
 //   2. av_read_frame 读一个包
-//   3. 视频包 -> videoPacketQueue
-//   4. 音频包 -> audioPacketQueue
+//   3. 视频�?-> videoPacketQueue
+//   4. 音频�?-> audioPacketQueue
 //   5. EOF -> 标记 demuxEof
 // ============================================================
 
@@ -3177,11 +3262,11 @@ void Player::DemuxLoop()
 
         if (ret < 0)
         {
-            // pkt 作用域结束自动释放
+            // pkt 作用域结束自动释�?
 
             if (ret == AVERROR_EOF)
             {
-                // 文件读完了：标记 EOF（音频线程负责冲刷解码器）
+                // 文件读完了：标记 EOF（音频线程负责冲刷解码器�?
                 demuxEof.store(true);
             }
             else
@@ -3192,7 +3277,7 @@ void Player::DemuxLoop()
                     ret);
             }
 
-            // ---------- 断网重连（8.3）：直播流报错/EOF 触发 ----------
+            // ---------- 断网重连�?.3）：直播流报�?EOF 触发 ----------
 
             if (useNetBuffer &&
                 demuxer &&
@@ -3205,7 +3290,7 @@ void Player::DemuxLoop()
 
                 reconnectRequested.store(true);
 
-                // 打断阻塞读，退出 Demux 线程（主循环负责重建）
+                // 打断阻塞读，退�?Demux 线程（主循环负责重建�?
                 demuxer->SetAbort(true);
 
                 break;
@@ -3217,9 +3302,9 @@ void Player::DemuxLoop()
             continue;
         }
 
-        // ---------- 分发包 ----------
+        // ---------- 分发�?----------
 
-        // 网络统计：收到一个包（7.2）
+        // 网络统计：收到一个包�?.2�?
         if (networkStatistics)
         {
             networkStatistics->OnPacketReceived(
@@ -3237,12 +3322,12 @@ void Player::DemuxLoop()
             pkt->stream_index ==
             demuxer->GetAudioIndex())
         {
-            // 音频包入队（直播：NetworkBuffer；点播：背压）
+            // 音频包入队（直播：NetworkBuffer；点播：背压�?
             PushAudioPacket(std::move(pkt));
         }
         else
         {
-            // 其他流（字幕等）直接丢弃（RAII 自动释放）
+            // 其他流（字幕等）直接丢弃（RAII 自动释放�?
         }
     }
 
@@ -3252,24 +3337,24 @@ void Player::DemuxLoop()
 }
 
 // ============================================================
-// Video 线程主循环
+// Video 线程主循�?
 //
-//   1. 从 videoPacketQueue 取包
+//   1. �?videoPacketQueue 取包
 //   2. avcodec_send_packet + avcodec_receive_frame
-//   3. 帧入 videoFrameQueue（Render 线程消费）
+//   3. 帧入 videoFrameQueue（Render 线程消费�?
 //
-//   Seek 时队列会被 Interrupt：
+//   Seek 时队列会�?Interrupt�?
 //   - 立即 flush 视频解码器（丢弃 Seek 前的解码状态）
-//   - 等待队列恢复后继续
+//   - 等待队列恢复后继�?
 // ============================================================
 
 // ============================================================
-// 硬件解码接入辅助（7.7）
+// 硬件解码接入辅助�?.7�?
 //
 // 三个辅助函数统一“当前激活的视频解码器”入口：
-//   - hwDecoder 激活（硬解成功）时走硬解，Receive 后把 GPU 帧
-//     拷回系统内存（NV12），调用方拿到的是可直接渲染/编码的帧；
-//   - 否则走软解 videoDecoder（原逻辑不变）。
+//   - hwDecoder 激活（硬解成功）时走硬解，Receive 后把 GPU �?
+//     拷回系统内存（NV12），调用方拿到的是可直接渲染/编码的帧�?
+//   - 否则走软�?videoDecoder（原逻辑不变）�?
 // ============================================================
 
 void Player::FlushVideoDecoder()
@@ -3308,7 +3393,7 @@ DecodeResult Player::ReceiveVideoFrame(
     if (hwDecoder &&
         hwDecoder->IsReady())
     {
-        // 硬件路径：先取 GPU 帧，再回读到系统内存（NV12）
+        // 硬件路径：先�?GPU 帧，再回读到系统内存（NV12�?
         DecodeResult r =
             hwDecoder->ReceiveFrame(out);
 
@@ -3329,7 +3414,7 @@ DecodeResult Player::ReceiveVideoFrame(
             }
         }
 
-        // GPU 帧 -> 系统内存（软解模式直接 ref）
+        // GPU �?-> 系统内存（软解模式直�?ref�?
         if (!hwDecoder->TransferFrame(
             out.get(),
             hwTransferFrame.get()))
@@ -3337,7 +3422,7 @@ DecodeResult Player::ReceiveVideoFrame(
             return DecodeResult::Error;
         }
 
-        // 回读帧交给调用方（GPU 帧 out 自动释放）
+        // 回读帧交给调用方（GPU �?out 自动释放�?
         out.reset(
             av_frame_clone(
                 hwTransferFrame.get()));
@@ -3367,7 +3452,7 @@ void Player::TryInitHardwareDecoder(
         return;
     }
 
-    // 配置开关
+    // 配置开�?
     StreamConfig cfg =
         configManager ?
         configManager->GetStreamConfig() :
@@ -3383,7 +3468,7 @@ void Player::TryInitHardwareDecoder(
         return;
     }
 
-    // 硬件探测（CUDA -> D3D11VA -> DXVA2）
+    // 硬件探测（CUDA -> D3D11VA -> DXVA2�?
     if (!cudaContext ||
         !cudaContext->IsAvailable())
     {
@@ -3395,7 +3480,7 @@ void Player::TryInitHardwareDecoder(
         return;
     }
 
-    // 仅 h264 / hevc 走硬解
+    // �?h264 / hevc 走硬�?
     std::string codecName;
 
     switch (codecpar->codec_id)
@@ -3421,7 +3506,7 @@ void Player::TryInitHardwareDecoder(
     hwDecoder =
         std::make_unique<HardwareDecoder>();
 
-    // 8.5：直播解码级低延迟（硬件 + 软解回退两处 avcodec_open2）
+    // 8.5：直播解码级低延迟（硬件 + 软解回退两处 avcodec_open2�?
     hwDecoder->SetLowDelay(
         useNetBuffer);
 
@@ -3441,10 +3526,10 @@ void Player::TryInitHardwareDecoder(
 
 void Player::VideoDecodeLoop()
 {
-    // Seek 代数：每次 Seek 递增，用于判断是否需要 flush
+    // Seek 代数：每�?Seek 递增，用于判断是否需�?flush
     int lastSeekGen = 0;
 
-    // 本 EOF 周期是否已冲刷过解码器
+    // �?EOF 周期是否已冲刷过解码�?
     bool eofFlushed = false;
 
     while (!quit.load())
@@ -3458,14 +3543,14 @@ void Player::VideoDecodeLoop()
 
         if (seekGen != lastSeekGen)
         {
-            // 新的一次 Seek：清空解码器内部状态
+            // 新的一�?Seek：清空解码器内部状�?
             FlushVideoDecoder();
 
             lastSeekGen = seekGen;
 
             eofFlushed = false;
 
-            // 解码未结束
+            // 解码未结�?
             videoEof.store(false);
         }
 
@@ -3479,7 +3564,7 @@ void Player::VideoDecodeLoop()
         {
             if (IsVideoQueueInterrupted())
             {
-                // Seek / 退出中：等待队列恢复
+                // Seek / 退出中：等待队列恢�?
                 SDL_Delay(2);
 
                 continue;
@@ -3487,12 +3572,12 @@ void Player::VideoDecodeLoop()
 
             if (demuxEof.load())
             {
-                // 队列取空且文件已读完：冲刷解码器剩余帧
+                // 队列取空且文件已读完：冲刷解码器剩余�?
                 if (!eofFlushed)
                 {
                     eofFlushed = true;
 
-                    // 发送 NULL 包触发解码器冲刷
+                    // 发�?NULL 包触发解码器冲刷
                     SendVideoPacket(nullptr);
 
                     // 取出所有剩余帧
@@ -3505,11 +3590,11 @@ void Player::VideoDecodeLoop()
 
                         if (r != DecodeResult::Success)
                         {
-                            // NeedMorePacket / End / Error 均停止冲刷
+                            // NeedMorePacket / End / Error 均停止冲�?
                             break;
                         }
 
-                        // 解码统计（EOF 尾帧同样计数）
+                        // 解码统计（EOF 尾帧同样计数�?
                         if (statistics)
                         {
                             statistics->OnFrameDecoded();
@@ -3518,7 +3603,7 @@ void Player::VideoDecodeLoop()
                         // 输出链（EOF 尾帧同样送编码）
                         FeedOutputVideo(f.get());
 
-                        // 失败时 f 作用域结束自动释放
+                        // 失败�?f 作用域结束自动释�?
                         videoFrameQueue.Push(
                             std::move(f),
                             MAX_VIDEO_FRAMES);
@@ -3539,7 +3624,7 @@ void Player::VideoDecodeLoop()
 
         if (IsVideoQueueInterrupted())
         {
-            // 取到的是 Seek 前的旧包，丢弃（RAII 自动释放）
+            // 取到的是 Seek 前的旧包，丢弃（RAII 自动释放�?
             continue;
         }
 
@@ -3559,7 +3644,7 @@ void Player::VideoDecodeLoop()
 
             videoEof.store(false);
 
-            // 丢弃 Seek 前的旧包（RAII 自动释放）
+            // 丢弃 Seek 前的旧包（RAII 自动释放�?
             continue;
         }
 
@@ -3570,7 +3655,7 @@ void Player::VideoDecodeLoop()
 
         if (!videoDecReady)
         {
-            // 解码器未就绪：丢弃（RAII 自动释放）
+            // 解码器未就绪：丢弃（RAII 自动释放�?
             continue;
         }
 
@@ -3590,8 +3675,8 @@ void Player::VideoDecodeLoop()
 
             if (r != DecodeResult::Success)
             {
-                // NeedMorePacket（需要继续送包）/
-                // End（解码结束）/ Error（已记录日志）
+                // NeedMorePacket（需要继续送包�?
+                // End（解码结束）/ Error（已记录日志�?
                 break;
             }
 
@@ -3601,7 +3686,7 @@ void Player::VideoDecodeLoop()
                 statistics->OnFrameDecoded();
             }
 
-            // 输出链（7.4–7.6）：录制 / 推流 / HLS 共享编码器
+            // 输出链（7.4�?.6）：录制 / 推流 / HLS 共享编码�?
             FeedOutputVideo(f.get());
 
             if (!videoFrameQueue.Push(
@@ -3610,7 +3695,7 @@ void Player::VideoDecodeLoop()
             {
                 // 入队被打断（Seek/退出）：f 自动释放
 
-                // 说明正在 Seek：flush 后等待恢复
+                // 说明正在 Seek：flush 后等待恢�?
                 if (videoFrameQueue.IsInterrupted())
                 {
                     FlushVideoDecoder();
@@ -3624,7 +3709,7 @@ void Player::VideoDecodeLoop()
                 }
             }
 
-            // 有新数据到达，说明不再是 EOF 状态
+            // 有新数据到达，说明不再是 EOF 状�?
             videoEof.store(false);
         }
     }
@@ -3635,20 +3720,20 @@ void Player::VideoDecodeLoop()
 }
 
 // ============================================================
-// Audio 线程主循环
+// Audio 线程主循�?
 //
-//   1. 检查 Seek 代数变化 -> 清理音频链路（AudioSeekCleanup）
-//   2. 从 audioPacketQueue 取包
-//   3. 解码 -> 重采样 -> 变速 -> PushPCM
+//   1. 检�?Seek 代数变化 -> 清理音频链路（AudioSeekCleanup�?
+//   2. �?audioPacketQueue 取包
+//   3. 解码 -> 重采�?-> 变�?-> PushPCM
 //   4. EOF 冲刷：队列取空且文件读完 -> 冲刷解码器剩余帧
 //
-//   音频链路完全由本线程独占，
-//   Demux 线程不碰音频（避免跨线程竞争）
+//   音频链路完全由本线程独占�?
+//   Demux 线程不碰音频（避免跨线程竞争�?
 // ============================================================
 
 void Player::AudioDecodeLoop()
 {
-    // Seek 代数：每次 Seek 递增，用于判断是否需要清理
+    // Seek 代数：每�?Seek 递增，用于判断是否需要清�?
     int lastSeekGen = 0;
 
     while (!quit.load())
@@ -3680,20 +3765,20 @@ void Player::AudioDecodeLoop()
         {
             if (IsAudioQueueInterrupted())
             {
-                // Seek / 退出中：等待队列恢复
+                // Seek / 退出中：等待队列恢�?
                 SDL_Delay(2);
 
                 continue;
             }
 
-            // EOF 冲刷：队列取空且文件已读完
+            // EOF 冲刷：队列取空且文件已读�?
             if (demuxEof.load() &&
                 !audioEof.load() &&
                 audioDecoder)
             {
                 audioEof.store(true);
 
-                // 发送 NULL 包触发解码器冲刷
+                // 发�?NULL 包触发解码器冲刷
                 audioDecoder->SendPacket(nullptr);
 
                 // 取出所有剩余帧
@@ -3711,7 +3796,7 @@ void Player::AudioDecodeLoop()
 
                     ProcessAudioFrame(f.get());
 
-                    // 帧已消费，释放引用
+                    // 帧已消费，释放引�?
                     f.reset();
                 }
             }
@@ -3722,7 +3807,7 @@ void Player::AudioDecodeLoop()
         if (IsAudioQueueInterrupted() ||
             audioAbort.load())
         {
-            // Seek / 退出期间丢弃（RAII 自动释放）
+            // Seek / 退出期间丢弃（RAII 自动释放�?
             continue;
         }
 
@@ -3741,7 +3826,7 @@ void Player::AudioDecodeLoop()
                 seekController->GetTarget() :
                 0.0);
 
-            // 丢弃这个包（可能是 Seek 前入队的残留，RAII 自动释放）
+            // 丢弃这个包（可能�?Seek 前入队的残留，RAII 自动释放�?
             continue;
         }
 
@@ -3750,7 +3835,7 @@ void Player::AudioDecodeLoop()
             !speedController ||
             !audioDevice)
         {
-            // 音频链未就绪：丢弃（RAII 自动释放）
+            // 音频链未就绪：丢弃（RAII 自动释放�?
             continue;
         }
 
@@ -3759,7 +3844,7 @@ void Player::AudioDecodeLoop()
         // 8.4：send 为同步消费，pkt 用后自动释放
         audioDecoder->SendPacket(pkt.get());
 
-        // 取出所有解码出的 PCM 帧
+        // 取出所有解码出�?PCM �?
         FramePtr f;
 
         while (true)
@@ -3774,7 +3859,7 @@ void Player::AudioDecodeLoop()
 
             ProcessAudioFrame(f.get());
 
-            // 帧已消费，释放引用
+            // 帧已消费，释放引�?
             f.reset();
         }
     }
@@ -3796,7 +3881,7 @@ bool Player::SwitchMedia(
         << path
         << std::endl;
 
-    // 1. 停线程
+    // 1. 停线�?
     audioAbort.store(true);
 
     StopThreads();
@@ -3804,7 +3889,7 @@ bool Player::SwitchMedia(
     // 2. 释放媒体资源
     ReleaseMedia();
 
-    // 3. 重新初始化媒体
+    // 3. 重新初始化媒�?
     if (!OpenMedia(path))
     {
         ErrorHandler::Log(
@@ -3815,6 +3900,9 @@ bool Player::SwitchMedia(
         return false;
     }
 
+    // reset abort flag: new audio thread must push PCM again
+    audioAbort.store(false);
+
     Logger::Info()
         << "[Player] SwitchMedia Success"
         << std::endl;
@@ -3823,20 +3911,20 @@ bool Player::SwitchMedia(
 }
 
 // ============================================================
-// 释放媒体资源（保留 SDL 会话与常驻对象）
+// 释放媒体资源（保�?SDL 会话与常驻对象）
 // ============================================================
 
 void Player::ReleaseMedia()
 {
-    // 输出链（7.4–7.6）：停止录制 / 推流 / HLS 并释放
+    // 输出链（7.4�?.6）：停止录制 / 推流 / HLS 并释�?
     StopAllOutputs();
 
-    // 上一帧副本
+    // 上一帧副�?
     lastFrame.reset();
 
     // ---------- 音频链路 ----------
 
-    // 8.1：先解绑音频时钟，避免 MasterClock 持有悬空指针
+    // 8.1：先解绑音频时钟，避�?MasterClock 持有悬空指针
     if (syncController)
     {
         syncController->SetAudioClock(nullptr);
@@ -3899,7 +3987,7 @@ void Player::ReleaseMedia()
 
     swsSrcH = 0;
 
-    // OSD 纹理绑定旧渲染器，销毁后重新初始化
+    // OSD 纹理绑定旧渲染器，销毁后重新初始�?
     if (osdManager &&
         fontManager)
     {
@@ -3908,7 +3996,7 @@ void Player::ReleaseMedia()
         osdManager->Init(fontManager.get());
     }
 
-    // ---------- 解码器 ----------
+    // ---------- 解码�?----------
 
     hwTransferFrame.reset();
 
@@ -3932,12 +4020,12 @@ void Player::ReleaseMedia()
 
     videoFrameQueue.ResetInterrupt();
 
-    // 直播队列（NetworkBuffer）同样清空 + 复位
+    // 直播队列（NetworkBuffer）同样清�?+ 复位
     videoNetBuffer.Clear();
 
     videoNetBuffer.ResetInterrupt();
 
-    // 8.5：音频队列 LiveMode 复位（直播 -> 点播切换时清除状态）
+    // 8.5：音频队�?LiveMode 复位（直�?-> 点播切换时清除状态）
     audioPacketQueue.SetLiveMode(
         false,
         1,
@@ -3951,7 +4039,7 @@ void Player::ReleaseMedia()
         subtitleManager->Clear();
     }
 
-    // ---------- 状态复位 ----------
+    // ---------- 状态复�?----------
 
     duration = 0.0;
 
@@ -3981,7 +4069,7 @@ void Player::ReleaseMedia()
 }
 
 // ============================================================
-// 音频处理（Audio 线程）
+// 音频处理（Audio 线程�?
 // ============================================================
 
 void Player::ProcessAudioFrame(
@@ -4028,15 +4116,15 @@ void Player::ProcessAudioFrame(
             }
         }
 
-        // 到达目标位置，停止丢弃
+        // 到达目标位置，停止丢�?
         dropAudioUntil = -1.0;
     }
 
-    // 输出链（7.4–7.6）：录制 / 推流 / HLS 共享编码器
-    // （内部 swr 自动转为编码器所需格式，pts 自管理）
+    // 输出链（7.4�?.6）：录制 / 推流 / HLS 共享编码�?
+    // （内�?swr 自动转为编码器所需格式，pts 自管理）
     FeedOutputAudio(frame);
 
-    // 重采样为 S16 / 48000Hz / 双声道
+    // 重采样为 S16 / 48000Hz / 双声�?
     uint8_t pcmBuffer[192000];
 
     int samples =
@@ -4107,7 +4195,7 @@ void Player::AudioSeekCleanup(
         speedController->Reset();
     }
 
-    // 重置音频主时钟 + 清空 PCM 队列
+    // 重置音频主时�?+ 清空 PCM 队列
     if (audioDevice)
     {
         audioDevice->ResetClock(target);
@@ -4115,10 +4203,10 @@ void Player::AudioSeekCleanup(
         audioDevice->ResetInterrupt();
     }
 
-    // 恢复音频推送（RequestSeek 时置位了 abort）
+    // 恢复音频推送（RequestSeek 时置位了 abort�?
     audioAbort.store(false);
 
-    // 丢弃 Seek 目标之前的旧音频帧
+    // 丢弃 Seek 目标之前的旧音频�?
     dropAudioUntil = target;
 
     // 允许新的 EOF 冲刷
@@ -4143,7 +4231,7 @@ double Player::GetFramePts(
         return 0.0;
     }
 
-    // 优先用 best_effort_timestamp
+    // 优先�?best_effort_timestamp
     int64_t ts =
         frame->best_effort_timestamp;
 
