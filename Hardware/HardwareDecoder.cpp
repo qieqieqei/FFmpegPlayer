@@ -194,10 +194,40 @@ bool HardwareDecoder::Init(
 
     if (hardware)
     {
+        // 9.x：sw_format 跟随解码器实际像素格式，不再硬编码 NV12。
+        // yuv444p / 10bit 视频若用 NV12 帧池，av_hwframe_transfer_data 会每帧报
+        // Invalid argument (-22)（4:4:4 色度无法放进 4:2:0 帧池）。
+        AVPixelFormat swFmt = AV_PIX_FMT_NV12;
+
+        switch (codecCtx->sw_pix_fmt)
+        {
+        case AV_PIX_FMT_YUV420P:
+        case AV_PIX_FMT_YUVJ420P:
+            swFmt = AV_PIX_FMT_NV12;
+            break;
+
+        case AV_PIX_FMT_YUV420P10LE:
+            swFmt = AV_PIX_FMT_P010;
+            break;
+
+        case AV_PIX_FMT_YUV444P:
+            swFmt = AV_PIX_FMT_YUV444P;
+            break;
+
+        case AV_PIX_FMT_YUV444P10LE:
+            swFmt = AV_PIX_FMT_P012;
+            break;
+
+        default:
+            swFmt = AV_PIX_FMT_NV12;
+            break;
+        }
+
         framesRef.reset(
             cuda->CreateFramesRef(
                 width,
-                height));
+                height,
+                swFmt));
 
         if (framesRef)
         {
@@ -207,13 +237,49 @@ bool HardwareDecoder::Init(
         }
         else
         {
-            // 帧池失败也回退软解
+            // 帧池失败：清掉硬件配置，完整重开软解
             Logger::Warn()
                 << "[HardwareDecoder] hw_frames_ctx failed, "
                 << "fallback to software"
                 << std::endl;
 
             hardware = false;
+
+            av_buffer_unref(
+                &codecCtx->hw_device_ctx);
+
+            codecCtx->get_format = nullptr;
+
+            AVDictionary* fallbackOpts = nullptr;
+
+            if (lowDelay)
+            {
+                av_dict_set(
+                    &fallbackOpts,
+                    "flags",
+                    "low_delay",
+                    0);
+            }
+
+            ret =
+                avcodec_open2(
+                    codecCtx.get(),
+                    codec,
+                    lowDelay ? &fallbackOpts : nullptr);
+
+            av_dict_free(&fallbackOpts);
+
+            if (ret < 0)
+            {
+                ErrorHandler::LogFFmpeg(
+                    ErrorTag::Decoder,
+                    "avcodec_open2 fallback software (hw_frames_ctx)",
+                    ret);
+
+                Close();
+
+                return false;
+            }
         }
     }
 
@@ -346,6 +412,16 @@ bool HardwareDecoder::TransferFrame(
     }
 
     // 硬件帧：从显存拷回系统内存
+    // 防御：若帧实际不是硬件格式（解码器静默回退软解等场景），走软拷贝
+    if (!hwFrame->hw_frames_ctx ||
+        hwFrame->format != hwPixFmt)
+    {
+        av_frame_unref(dst);
+
+        return
+            av_frame_ref(dst, hwFrame) >= 0;
+    }
+
     av_frame_unref(dst);
 
     int ret =
