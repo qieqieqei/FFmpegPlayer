@@ -342,5 +342,5 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 
 - ✅（2026-08-14）**稳定版收尾（8.14）**：无参数崩溃修复、默认视频 a4c277.mp4、桌面点播链路（文件关联 + ffmpegplayer: 协议）、控制栏 UI、循环回退（EOF 停住）、切歌无声修复（audioAbort）、字体路径修复（SDL_GetBasePath）、局域网摄像头直播链路验证 —— 已提交 GitHub
 - ✅（2026-08-14）**缓冲实验回退**：1~2s 播放端缓冲实测声音断续（门控无滞后回环 → pause/resume 快速震荡），回退到稳定低延迟配置；后续如需继续，方向为滞后回环（起步攒到 highWater 再放行、跌破极低水位才重暂停）
-- CUDA 硬解 `av_hwframe_transfer_data failed: Invalid argument`（hardware_decode=true 时每帧，Debug 复现）待修
+- ?（2026-08-14）CUDA 硬解 `av_hwframe_transfer_data failed: Invalid argument` 修复（commit `8b7eb1e`）：帧池格式不匹配——`hw_frames_ctx` 的 `sw_format` 跟随解码器实际输出格式（如 yuv444p），不再每帧报错；hardware_decode=true 下硬解链路恢复
 - RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）
