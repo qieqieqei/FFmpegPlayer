@@ -81,6 +81,9 @@ public:
 
     int GetLatencyMs() const;
 
+    // 累计丢弃包数（自 Reset 以来，含 GOP 段丢包）
+    int64_t GetDroppedPackets() const;
+
     // 是否处于饥饿状态（缓冲为空，等待网络数据）
     bool IsBuffering() const;
 
@@ -125,4 +128,7 @@ private:
     std::atomic<int> latencyMs{ 0 };
 
     std::atomic<bool> buffering{ false };
+
+    // 累计丢弃包数（v2 Metrics）
+    std::atomic<int64_t> totalDropped{ 0 };
 };

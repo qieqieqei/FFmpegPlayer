@@ -44,7 +44,7 @@ bool NetworkBuffer::Push(
         return false;
     }
 
-    // 队列满：GOP 感知丢包（8.4）——保持解码链完整
+    // 队列满（包数 / 内存上限）：GOP 感知丢包（8.4）——保持解码链完整
     //
     // 背景：盲目丢最旧包会撕裂 GOP（丢掉 P/B 帧的参考链），
     //       解码器花屏直到下一个关键帧。
@@ -55,7 +55,9 @@ bool NetworkBuffer::Push(
     //      整段丢弃，腾出空间，等下一个关键帧重建画面。
     // 效果：丢包粒度 = GOP 段，代价可控，画面始终能从关键帧恢复。
     while (static_cast<int>(queue.size()) >=
-        maxSize.load())
+            maxSize.load() ||
+        (maxMemoryBytes > 0 &&
+            queueBytes + pkt->size > maxMemoryBytes))
     {
         if (queue.front()->flags &
             AV_PKT_FLAG_KEY)
@@ -63,6 +65,8 @@ bool NetworkBuffer::Push(
             // 队头是关键帧：整段丢弃（当前 GOP 无法部分丢弃）
             while (!queue.empty())
             {
+                queueBytes -= queue.front()->size;
+
                 queue.pop_front();
 
                 dropped.fetch_add(1);
@@ -76,6 +80,8 @@ bool NetworkBuffer::Push(
             !(queue.front()->flags &
                 AV_PKT_FLAG_KEY))
         {
+            queueBytes -= queue.front()->size;
+
             queue.pop_front();
 
             dropped.fetch_add(1);
@@ -86,6 +92,8 @@ bool NetworkBuffer::Push(
     }
 
     queue.push_back(std::move(pkt));
+
+    queueBytes += queue.back()->size;
 
     // 8.5：直播时长上限——积压超过阈值丢旧包追最新
     TrimLiveLocked();
@@ -134,6 +142,8 @@ PacketPtr NetworkBuffer::Pop(
 
     queue.pop_front();
 
+    queueBytes -= pkt->size;
+
     return pkt;
 }
 
@@ -144,8 +154,12 @@ void NetworkBuffer::Clear()
     // PacketPtr 析构自动 av_packet_free
     while (!queue.empty())
     {
+        queueBytes -= queue.front()->size;
+
         queue.pop_front();
     }
+
+    queueBytes = 0;
 }
 
 int NetworkBuffer::Size() const
@@ -197,6 +211,43 @@ int NetworkBuffer::GetLiveDurationMs() const
     return liveDurationMs;
 }
 
+void NetworkBuffer::SetDurationTrimEnabled(
+    bool enabled)
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    durationTrimEnabled = enabled;
+}
+
+bool NetworkBuffer::GetDurationTrimEnabled() const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    return durationTrimEnabled;
+}
+
+void NetworkBuffer::SetMaxMemoryBytes(
+    size_t maxBytes)
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    maxMemoryBytes = maxBytes;
+}
+
+size_t NetworkBuffer::GetMaxMemoryBytes() const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    return maxMemoryBytes;
+}
+
+size_t NetworkBuffer::GetQueueBytes() const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    return queueBytes;
+}
+
 int64_t NetworkBuffer::GetDurationMs() const
 {
     std::lock_guard<std::mutex> lock(mutex);
@@ -239,10 +290,71 @@ int64_t NetworkBuffer::GetDroppedCount() const
     return dropped.load();
 }
 
+double NetworkBuffer::GetFrontPts() const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    if (queue.empty())
+    {
+        return -1.0;
+    }
+
+    int64_t frontTs =
+        queue.front()->pts;
+
+    if (frontTs == AV_NOPTS_VALUE)
+    {
+        frontTs = queue.front()->dts;
+    }
+
+    if (frontTs == AV_NOPTS_VALUE)
+    {
+        return -1.0;
+    }
+
+    return static_cast<double>(
+               av_rescale_q(
+                   frontTs,
+                   liveTimeBase,
+                   AVRational{ 1, 1000000 })) /
+        1000000.0;
+}
+
+double NetworkBuffer::GetBackPts() const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    if (queue.empty())
+    {
+        return -1.0;
+    }
+
+    int64_t backTs =
+        queue.back()->pts;
+
+    if (backTs == AV_NOPTS_VALUE)
+    {
+        backTs = queue.back()->dts;
+    }
+
+    if (backTs == AV_NOPTS_VALUE)
+    {
+        return -1.0;
+    }
+
+    return static_cast<double>(
+               av_rescale_q(
+                   backTs,
+                   liveTimeBase,
+                   AVRational{ 1, 1000000 })) /
+        1000000.0;
+}
+
 void NetworkBuffer::TrimLiveLocked()
 {
-    // 时长上限未开启：不修剪
-    if (liveDurationMs <= 0)
+    // 时长修剪关闭（缓冲状态机）或未开启：不修剪
+    if (!durationTrimEnabled ||
+        liveDurationMs <= 0)
     {
         return;
     }
@@ -291,6 +403,8 @@ void NetworkBuffer::TrimLiveLocked()
         {
             while (!queue.empty())
             {
+                queueBytes -= queue.front()->size;
+
                 queue.pop_front();
 
                 dropped.fetch_add(1);
@@ -303,6 +417,8 @@ void NetworkBuffer::TrimLiveLocked()
             !(queue.front()->flags &
                 AV_PKT_FLAG_KEY))
         {
+            queueBytes -= queue.front()->size;
+
             queue.pop_front();
 
             dropped.fetch_add(1);

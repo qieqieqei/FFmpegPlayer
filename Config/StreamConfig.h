@@ -67,7 +67,7 @@ struct StreamConfig
     // 长时间断网时避免高频重试打服务器
     double reconnectBackoffFactor = 1.0;    // 指数退避因子（8.4）
 
-    // ---------- 网络缓冲（7.3 / 8.5） ----------
+    // ---------- 网络缓冲（7.3 / 8.5 / v2 live-buffer） ----------
 
     int maxBufferPackets = 600;             // 网络缓冲最大包数
 
@@ -75,7 +75,12 @@ struct StreamConfig
 
     // 8.5：直播队列最大时长（毫秒）。队列积压超过该值就丢旧包
     // 追最新画面（PacketQueue LiveMode / NetworkBuffer 时长上限）
-    int liveMaxQueueMs = 500;               // 直播追最新阈值（默认 500ms）
+    // v2：稳定模式默认 3000ms（1~2s 缓冲吸收抖动）
+    int liveMaxQueueMs = 3000;              // 直播追最新阈值（默认 3000ms）
+
+    // v2：直播缓冲模式——"stable"（滞回缓冲，抗抖动，默认）/
+    //     "low_latency"（追最新，低延迟）。对应 CLI --live-buffer <ms>
+    std::string liveBufferMode = "stable"; // 直播缓冲模式（v2）
 
     // 8.5：摄像头目标延迟（毫秒）。0 = max_delay=0 极限低延迟（默认）
     int cameraLatencyMs = 0;                // camera_latency_ms

@@ -15,6 +15,7 @@
 #include <SDL.h>
 
 #include <cstring>
+#include <cstdlib>
 #include <string>
 
 #include "Player.h"
@@ -40,6 +41,8 @@ int main(
     bool cliHls = false;
 
     bool cliPush = false;
+
+    int cliLiveBufferMs = -1;  // v2: --live-buffer <ms> (0 = low_latency)
 
     int firstFile = -1;  // 第一个非选项参数（文件）下标
 
@@ -70,6 +73,15 @@ int main(
         {
             // 启动即 RTMP 推流（stream.json 的 rtmp_url）
             cliPush = true;
+        }
+        else if (std::strcmp(argv[i], "--live-buffer") == 0 &&
+                 i + 1 < argc)
+        {
+            // v2: live buffer override (0 = low_latency)
+            cliLiveBufferMs =
+                std::atoi(argv[i + 1]);
+
+            i++;
         }
         else if (firstFile < 0)
         {
@@ -110,6 +122,12 @@ int main(
     // 加载并应用配置（音量 / 速度；Init 内部还会用网络参数）
     player.LoadConfig();
 
+    // v2: apply CLI --live-buffer override (0 = low_latency)
+    if (cliLiveBufferMs >= 0)
+    {
+        player.SetLiveBufferOverride(cliLiveBufferMs);
+    }
+
     // ---------- 播放列表（6.8）：多文件 / 单文件 / 默认 ----------
 
     // 注意：选项（--record/--hls/--push/-v/--log-file）可能出现在文件之后，
@@ -126,7 +144,8 @@ int main(
                 continue;
             }
 
-            if (std::strcmp(argv[i], "--log-file") == 0)
+            if (std::strcmp(argv[i], "--log-file") == 0 ||
+                std::strcmp(argv[i], "--live-buffer") == 0)
             {
                 i++;  // 跳过日志文件名
 

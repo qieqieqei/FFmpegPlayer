@@ -54,8 +54,39 @@ public:
 
     int GetLiveDurationMs() const;
 
+    // 直播时长修剪开关（缓冲状态机用）：
+    // PREBUFFERING / REBUFFERING 期间应关闭——
+    // 防止"一边积压一边丢旧"（v2 设计：积压本身就是要攒的水位）。
+    // 恢复 PLAYING 后重新开启（默认开启）。
+    void SetDurationTrimEnabled(
+        bool enabled);
+
+    bool GetDurationTrimEnabled() const;
+
+    // 设置队列内存上限（字节）。0 = 不限制（默认）。
+    // 与包数上限 / 时长上限叠加生效（v2：三重上限）。
+    void SetMaxMemoryBytes(
+        size_t maxBytes);
+
+    size_t GetMaxMemoryBytes() const;
+
+    // 当前队列内存占用（字节，packet->size 累计）
+    size_t GetQueueBytes() const;
+
     // 当前队列时长（毫秒，按队首/队尾 pts 估算；缺 pts 返回 0）
     int64_t GetDurationMs() const;
+
+    // v2: pts of the oldest buffered packet (seconds, liveTimeBase),
+    // -1.0 when empty or no valid timestamp. Used to re-anchor the audio
+    // clock when buffering ends (resume from the buffer point instead of
+    // waiting for the frozen clock to catch up).
+    double GetFrontPts() const;
+
+    // v2: pts of the newest buffered packet (seconds, liveTimeBase),
+    // -1.0 when empty or no valid timestamp. Together with GetFrontPts it
+    // yields the live backlog span; against the audio clock it gives the
+    // audio-side buffer depth (how far audio lags the push head).
+    double GetBackPts() const;
 
     // 入队一个 Packet（移动语义，队列接管所有权）。
     // 队列满时：丢弃最旧的包（droppedCount++），新包入队。
@@ -103,6 +134,12 @@ private:
     // ---------- 直播时长上限（8.5，mutex 保护） ----------
 
     int liveDurationMs = 0;                   // 时长上限（0 = 关闭）
+
+    bool durationTrimEnabled = true;          // 时长修剪开关（缓冲状态机用）
+
+    size_t maxMemoryBytes = 0;                // 内存上限（0 = 关闭）
+
+    size_t queueBytes = 0;                    // 当前队列字节数（packet->size 累计）
 
     AVRational liveTimeBase = { 1, 90000 };   // 包时间基
 

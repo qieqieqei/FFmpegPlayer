@@ -109,6 +109,15 @@
 - ✅ **局域网摄像头直播链路**：mediamtx（RTSP:8554）+ B 机 ffmpeg 推流 + 本机播放器拉流，端到端 ~300ms 延迟
 - ⚠️ **缓冲实验已回退**：1~2s 播放端缓冲实测声音断续严重（门控无滞后回环 → 快速 toggle），已回退到稳定低延迟配置（直播 300ms / 队列 500ms）
 
+### 直播缓冲 v2（live-buffer，8.16）
+- ✅ **稳定模式（stable，默认）**：滞回缓冲抗抖动——缓冲不足时攒到 `buffer_target_ms`（默认 1500ms）才放行，播放中跌破极低水位（750ms，300ms 滞回）才重新缓冲，避免快速 toggle；吸收 Wi-Fi 级小抖动
+- ✅ **低延迟模式（low_latency）**：追最新画面（丢旧包），延迟约 300-600ms，适合强实时场景
+- ✅ **audioMs 口径修正（fix6）**：改为「音频时钟落后推流头部」`max(0, backPts - audioClock)`——PCM 积压（SDL 即时消费≈0）不再拖死缓冲水位判定导致无限 rebuffer
+- ✅ **时钟重对齐（fix2/fix4）**：idle/渲染路径 RELEASE 沿 `ResetClock(队首 pts)` + 等 pts 上限 `delay<=2.0`，渲染恢复即对齐
+- ✅ **门控精简（fix3）**：删除 AudioDecodeLoop 门控，PCM 3s 背压天然节流；NetworkBuffer 新增 `GetBackPts()`（队尾 pts）
+- ✅ 配置：`live_buffer_mode`（stable/low_latency）、`buffer_target_ms`（1500）、`live_max_queue_ms`（3000）；CLI `--live-buffer <ms>`（0 = low_latency，>0 = stable 目标）
+- ✅ 实测（8/16）：stable 55s（35s 连续 PLAYING，avsync ≈32ms）、low_latency 45s（underrun=0）、断流恢复 2s 自愈；**Wi-Fi 真流 25.6min：rebuffer 4 次共 8.3s（0.54%）、stall=0、稳态 avsync ≈28ms**，用户认可
+
 ---
 
 ## 快捷键
@@ -341,6 +350,7 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 - RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）
 
 - ✅（2026-08-14）**稳定版收尾（8.14）**：无参数崩溃修复、默认视频 a4c277.mp4、桌面点播链路（文件关联 + ffmpegplayer: 协议）、控制栏 UI、循环回退（EOF 停住）、切歌无声修复（audioAbort）、字体路径修复（SDL_GetBasePath）、局域网摄像头直播链路验证 —— 已提交 GitHub
-- ✅（2026-08-14）**缓冲实验回退**：1~2s 播放端缓冲实测声音断续（门控无滞后回环 → pause/resume 快速震荡），回退到稳定低延迟配置；后续如需继续，方向为滞后回环（起步攒到 highWater 再放行、跌破极低水位才重暂停）
+- ✅（2026-08-14）**缓冲实验回退**：1~2s 播放端缓冲实测声音断续（门控无滞后回环 → pause/resume 快速震荡），回退到稳定低延迟配置 —— 后续已由 **v2 live-buffer 稳定模式**（滞回缓冲，8/16，见上）实现并验证
+- ✅（2026-08-16）**直播缓冲 v2**：stable/low_latency 双模式 + 滞回缓冲 + audioMs 口径修正 + 时钟重对齐，Wi-Fi 真流 25.6min 验证通过 —— 已提交 GitHub（feature/live-buffer 分支）
 - ?（2026-08-14）CUDA 硬解 `av_hwframe_transfer_data failed: Invalid argument` 修复（commit `8b7eb1e`）：帧池格式不匹配——`hw_frames_ctx` 的 `sw_format` 跟随解码器实际输出格式（如 yuv444p），不再每帧报错；hardware_decode=true 下硬解链路恢复
 - RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）

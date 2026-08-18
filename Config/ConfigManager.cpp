@@ -901,6 +901,10 @@ void ConfigManager::LoadStream(
     stream.liveMaxQueueMs =
         GetInt(root, "live_max_queue_ms", stream.liveMaxQueueMs);
 
+    // v2：直播缓冲模式（stable / low_latency），CLI --live-buffer 可覆盖
+    stream.liveBufferMode =
+        GetString(root, "live_buffer_mode", stream.liveBufferMode);
+
     stream.cameraLatencyMs =
         GetInt(root, "camera_latency_ms", stream.cameraLatencyMs);
 

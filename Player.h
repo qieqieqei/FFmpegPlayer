@@ -107,6 +107,9 @@ public:
     // 配置管理器访问（main 读取 default_url 等）
     ConfigManager* GetConfigManager() const;
 
+    // v2: CLI override --live-buffer <ms> (0 = low_latency, >0 = stable target)
+    void SetLiveBufferOverride(int ms);
+
     // 渲染主循环（启动三个线程，播放直到退出）
     bool Run();
 
@@ -489,6 +492,9 @@ private:
 
     // 网络缓冲控制（7.3：缓冲水位）
     std::unique_ptr<BufferController> bufferController;
+
+    // v2: --live-buffer <ms> CLI override (-1 = not set)
+    int liveBufferOverrideMs = -1;
 
     // 流媒体监控（7.9：网络流健康巡检）
     std::unique_ptr<StreamMonitor> streamMonitor;

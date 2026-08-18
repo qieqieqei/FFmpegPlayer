@@ -38,12 +38,14 @@ bool AudioDevice::Init(
 
     this->channels = channels;
 
-    // 最大缓冲 = 2 秒音频
+    // 最大缓冲 = 3 秒音频
+    // （v2 缓冲模式 highWater=1950ms，2 秒背压上限会卡在临界；
+    //  3 秒与高水位拉开距离，同时背压仍防止解码跑太前）
     pcmQueue.SetMaxBytes(
         static_cast<size_t>(sampleRate) *
         channels *
         2 *
-        2);
+        3);
 
     device =
         SDL_OpenAudioDevice(
@@ -63,6 +65,8 @@ bool AudioDevice::Init(
     }
 
     SDL_PauseAudioDevice(device, 0);
+
+    paramsReady = true;
 
     Logger::Info()
         << "[Audio] SDL Audio Device Open Success ("

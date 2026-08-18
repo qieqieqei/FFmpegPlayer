@@ -43,6 +43,8 @@ void NetworkStatistics::Reset()
 
     buffering.store(false);
 
+    totalDropped.store(0);
+
     lastTick =
         std::chrono::steady_clock::now();
 }
@@ -74,6 +76,8 @@ void NetworkStatistics::OnPacketDropped(
     std::lock_guard<std::mutex> lock(mutex);
 
     windowDropped += count;
+
+    totalDropped.fetch_add(count);
 
     Tick();
 }
@@ -167,6 +171,11 @@ int NetworkStatistics::GetBufferMax() const
 int NetworkStatistics::GetLatencyMs() const
 {
     return latencyMs.load();
+}
+
+int64_t NetworkStatistics::GetDroppedPackets() const
+{
+    return totalDropped.load();
 }
 
 bool NetworkStatistics::IsBuffering() const

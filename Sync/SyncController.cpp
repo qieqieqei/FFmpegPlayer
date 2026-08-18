@@ -1,5 +1,7 @@
 #include "Sync/SyncController.h"
 
+#include <climits>
+
 #include "Sync/AudioClock.h"
 
 #include "Utils/ErrorHandler.h"
@@ -26,6 +28,13 @@ void SyncController::SetAudioClock(
 double SyncController::GetMasterTime() const
 {
     return masterClock.GetTime();
+}
+
+int SyncController::GetAvSyncMs() const
+{
+    // 视频时钟 - 主时钟（音频优先；无音频时主时钟 = 视频时钟，差恒为 0）
+    return static_cast<int>(
+        (videoClock.Get() - masterClock.GetTime()) * 1000.0);
 }
 
 double SyncController::GetVideoDelay(
@@ -193,6 +202,31 @@ void SyncController::SetLiveMode(
 bool SyncController::IsLiveMode() const
 {
     return liveMode;
+}
+
+void SyncController::SetBufferStableMode(
+    bool stable)
+{
+    if (stable)
+    {
+        // 稳定缓冲：关超前丢帧（阈值极大，实际永不触发），
+        // 落后丢帧 2500ms 兜底（防异常下缓冲无限增长）
+        liveClock.SetAheadThresholdMs(INT_MAX - 1);
+
+        liveClock.SetBehindThresholdMs(2500);
+    }
+    else
+    {
+        // 低延迟：恢复旧行为（超前 100ms / 落后 50ms）
+        liveClock.SetAheadThresholdMs(100);
+
+        liveClock.SetBehindThresholdMs(50);
+    }
+
+    Logger::Info()
+        << "[Sync] Buffer stable mode : "
+        << (stable ? "on (ahead-drop off, behind 2500ms)" : "off (low-latency 100/50ms)")
+        << std::endl;
 }
 
 LiveClock* SyncController::GetLiveClock()

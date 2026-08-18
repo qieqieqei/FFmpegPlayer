@@ -52,6 +52,10 @@ public:
     // 当前主时钟时间（秒）——同步基准
     double GetMasterTime() const;
 
+    // v2 Metrics: A/V sync deviation (ms) = video clock - master clock
+    // > 0 video ahead, < 0 audio ahead
+    int GetAvSyncMs() const;
+
     // ---------- 帧调度 ----------
 
     // 计算视频渲染延迟
@@ -90,6 +94,14 @@ public:
     //   live = false: 点播策略——PTS 正常对齐（原行为）
     void SetLiveMode(
         bool live);
+
+    // 稳定缓冲模式（v2，直播时调用）：
+    //   stable = true  : 关闭"超前丢帧"（积压是缓冲要攒的水位，
+    //                    不能一边 Buffer 一边丢 Buffer），
+    //                    落后丢帧阈值放大到 2500ms 作兜底
+    //   stable = false : 低延迟模式（恢复 100ms / 50ms 旧行为）
+    void SetBufferStableMode(
+        bool stable);
 
     // 是否直播模式
     bool IsLiveMode() const;

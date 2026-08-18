@@ -64,6 +64,17 @@ public:
     // 获取当前缓冲字节数
     int GetQueuedSize();
 
+    // 当前音频输出参数（缓冲水位换算用，实际值非硬编码）
+    int GetSampleRate() const
+    {
+        return sampleRate;
+    }
+
+    int GetChannels() const
+    {
+        return channels;
+    }
+
     // 获取音频主时钟（媒体时间，秒）
     // = 时钟基准 + 已播放输出时间 * 播放速度
     double GetAudioClock() const;
@@ -121,6 +132,9 @@ private:
 
     // 声道数量
     int channels = 2;
+
+    // 音频参数就绪标志（Init 成功后置位，供水位换算判断）
+    bool paramsReady = false;
 
     // PCM 数据队列（独立类，带背压）
     PCMQueue pcmQueue;
