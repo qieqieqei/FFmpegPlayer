@@ -97,6 +97,20 @@ private:
     void AudioSeekCleanup(
         double target);
 
+    // Frame acquisition + A/V sync (phase 5.3b, moved from Player::Run).
+    // FrameAction tells the render loop whether to present or continue.
+    enum class FrameAction
+    {
+        Skip,
+        Present
+    };
+
+    FrameAction AcquireAndSyncFrame(
+        FramePtr& frame,
+        double& pts,
+        bool& quit,
+        bool& lastBufferingBlock);
+
     // Present one decoded frame (phase 5.3): render + render stats +
     // screenshot snapshot + time/progress + buffer-gate transition.
     // Moved out of Player::Run so the loop keeps only the frame

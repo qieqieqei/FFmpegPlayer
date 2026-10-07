@@ -6,6 +6,7 @@
 #include "infra/Logger.h"
 #include "streaming/StreamMonitor.h"
 #include "hardware/CUDAContext.h"
+#include "app/Event.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -1952,4 +1953,348 @@ void PlaybackSession::HandleReconnect(
     }
 
     return;
+}
+
+// ============================================================
+// Frame acquisition + A/V sync (phase 5.3b, moved from Player::Run)
+//
+// Pops a frame (or drains pre-seek frames), advances the idle /
+// buffer-gate / EOF state machine, then performs A/V sync waits and
+// frame dropping. Returns FrameAction::Skip when the render loop
+// should just continue (no frame to present).
+// ============================================================
+
+PlaybackSession::FrameAction PlaybackSession::AcquireAndSyncFrame(
+    FramePtr& frame,
+    double& pts,
+    bool& quit,
+    bool& lastBufferingBlock)
+{
+    // ---------- 取一�?----------
+
+    // 8.4：FramePtr 返回所有权，无需手动释放
+
+    // Seek 完成：丢弃目标时间之前的旧帧
+    if (owner.seekController->IsHandled())
+    {
+        while ((frame =
+            media.videoFrameQueue.Pop(0)))
+        {
+            // 旧帧（pts 小于目标）：丢弃（RAII 自动释放�?
+            if (owner.GetFramePts(frame.get()) <
+                seekPosition - 0.05)
+            {
+                owner.statistics->OnFrameDropped();
+
+                continue;
+            }
+
+            // 到达新位置的第一�?
+            break;
+        }
+
+        if (frame)
+        {
+            owner.seekController->ClearHandled();
+
+            seekPending = false;
+        }
+    }
+    else
+    {
+        // 正常取帧（最多等 10ms�?
+        frame =
+            media.videoFrameQueue.Pop(10);
+    }
+
+    // ---------- 没有�?----------
+
+    if (!frame)
+    {
+        // v2: buffer gate - consuming blocked (prebuffer/rebuffer/stall),
+        // frame queue drained by design, idle until released.
+        // NOTE: must still advance the state machine here, otherwise the
+        // render loop never reaches UpdateStatistics() and the controller
+        // stays in Prebuffering forever (deadlock: gated decode threads
+        // never produce frames, no frame -> no Update -> no release).
+        if (media.useNetBuffer &&
+            owner.bufferController &&
+            owner.bufferController->IsConsumingBlocked())
+        {
+            static Uint32 lastGateLog = 0;
+
+            Uint32 gNow = SDL_GetTicks();
+
+            if (gNow - lastGateLog >= 500)
+            {
+                lastGateLog = gNow;
+
+                Logger::Info()
+                    << "[Gate] render gate state="
+                    << owner.bufferController->GetStateName()
+                    << " buf="
+                    << static_cast<int>(owner.bufferController->GetBufferedMs())
+                    << std::endl;
+            }
+
+            if (!lastBufferingBlock)
+            {
+                lastBufferingBlock = true;
+
+                if (media.audioDevice)
+                {
+                    media.audioDevice->SetPaused(true);
+                }
+
+                media.videoNetBuffer.SetDurationTrimEnabled(false);
+
+                Logger::Info()
+                    << "[Player] Buffer gate : HOLD state="
+                    << owner.bufferController->GetStateName()
+                    << " aclk="
+                    << (media.audioDevice ?
+                        media.audioDevice->GetAudioClock() : -1.0)
+                    << " vclk="
+                    << owner.syncController->GetVideoClockTime()
+                    << std::endl;
+            }
+
+            owner.UpdateStatistics();
+
+            SDL_Delay(10);
+
+            return FrameAction::Skip;
+        }
+        else if (lastBufferingBlock)
+        {
+            // v2: release edge reached via idle path - rebuffer ended
+            // but the frame queue is still empty (decode threads were
+            // just released). Re-anchor the audio clock to the oldest
+            // buffered video pts so playback resumes from the buffer
+            // point instead of waiting for the frozen clock to catch
+            // up (that wait freezes the render loop for seconds).
+            lastBufferingBlock = false;
+
+            double anchorPts =
+                media.videoNetBuffer.GetFrontPts();
+
+            if (media.audioDevice)
+            {
+                media.audioDevice->ResetClock(
+                    anchorPts >= 0.0 ? anchorPts : 0.0);
+            }
+
+            media.videoNetBuffer.SetDurationTrimEnabled(true);
+
+            if (media.audioDevice)
+            {
+                media.audioDevice->SetPaused(false);
+            }
+
+            Logger::Info()
+                << "[Player] Buffer gate : RELEASE state="
+                << (owner.bufferController ?
+                    owner.bufferController->GetStateName() : "?")
+                << " aclk="
+                << (media.audioDevice ?
+                    media.audioDevice->GetAudioClock() : -1.0)
+                << " vclk="
+                << owner.syncController->GetVideoClockTime()
+                << std::endl;
+        }
+
+        // 暂停时（非帧步进）不取帧
+        if (owner.state == PlayerState::Paused &&
+            !owner.frameStepRequest)
+        {
+            SDL_Delay(10);
+
+            return FrameAction::Skip;
+        }
+
+        // 帧步进：取一帧后回到暂停
+        if (owner.frameStepRequest)
+        {
+            owner.ClearFrameStepRequest();
+        }
+
+        // 视频解码完毕：显示最后一帧，等待用户操作
+        if (videoEof.load() &&
+            media.videoFrameQueue.Size() == 0)
+        {
+            if (owner.state != PlayerState::EndOfFile)
+            {
+                owner.state = PlayerState::EndOfFile;
+
+                Logger::Info()
+                    << "[Player] End Of File"
+                    << std::endl;
+
+                // 自动退出计时起点（仅首轮）
+                owner.eofWaitStartMs =
+                    static_cast<int64_t>(
+                        SDL_GetTicks64());
+            }
+
+            // CLI 输出模式�?-record/--hls/--push）：
+            // EOF 后停�?3 秒（看最后一帧）再自动退�?
+            if (owner.autoQuitOnEof &&
+                owner.eofWaitStartMs >= 0 &&
+                static_cast<int64_t>(
+                    SDL_GetTicks64()) -
+                    owner.eofWaitStartMs >= 3000)
+            {
+                quit = true;
+
+                return FrameAction::Skip;
+            }
+
+
+            SDL_Delay(10);
+
+            return FrameAction::Skip;
+        }
+
+        static Uint32 lastIdleLog = 0;
+
+        Uint32 iNow = SDL_GetTicks();
+
+        if (iNow - lastIdleLog >= 500)
+        {
+            lastIdleLog = iNow;
+
+            Logger::Info()
+                << "[Gate] render idle state="
+                << (owner.bufferController ?
+                    owner.bufferController->GetStateName() : "?")
+                << " q="
+                << media.videoFrameQueue.Size()
+                << std::endl;
+        }
+
+        SDL_Delay(2);
+
+        return FrameAction::Skip;
+    }
+
+    // ---------- Seek 期间取到旧帧，丢�?----------
+
+    if (seekPending &&
+        owner.GetFramePts(frame.get()) < seekPosition - 0.05)
+    {
+        owner.statistics->OnFrameDropped();
+
+        // RAII 自动释放
+        return FrameAction::Skip;
+    }
+
+    // ---------- 音视频同步（5.1�?----------
+
+    pts =
+        owner.GetFramePts(frame.get());
+
+    // 网络统计：解码出一帧（输入 FPS�?
+    if (owner.networkStatistics)
+    {
+        owner.networkStatistics->OnFrameDecoded();
+    }
+
+    bool isStep =
+        owner.state == PlayerState::Paused;
+
+    // 8.1：推进视频时钟（无音频时作为主时钟基准）
+    owner.syncController->UpdateVideoClock(pts);
+
+    if (owner.HasAudio() &&
+        !isStep)
+    {
+        // 8.4（评审五）：音频墙钟漂移渐进校正�?
+        // 约每秒一次（60 �?@60fps），把媒体时间轴向真实时�?
+        // 拉回（单�?�?ms 无感知），长期播放进度不漂移
+        static int driftTick = 0;
+
+        if (++driftTick >= 60)
+        {
+            driftTick = 0;
+
+            if (media.audioDevice)
+            {
+                media.audioDevice->GetClock()->CorrectDrift();
+            }
+        }
+
+        // MasterClock 自动选择主时钟（音频优先�?
+        // 8.4：传帧时长做 ffplay 级目标延迟调整（评审五）
+        double delay =
+            owner.syncController->GetVideoDelay(
+                pts,
+                media.videoFrameDuration);
+
+        if (owner.syncController->ShouldDrop(delay))
+        {
+            // 视频落后：丢帧追赶（DropController 防抖�?
+            owner.syncController->OnFrameDropped();
+
+            owner.statistics->OnFrameDropped();
+
+            // RAII 自动释放
+            return FrameAction::Skip;
+        }
+
+        // 视频超前：等待（分片等待，保持事件响应）
+        // 8.5：直播模式不等待——延迟超过阈值已�?LiveClock 丢帧�?
+        //      阈值内的轻微超前直接渲染（追最新，最低延迟）
+        while (delay > 0.0 &&
+            delay <= 2.0 &&
+            !quit &&
+            (!owner.syncController->IsLiveMode() ||
+                media.useNetBuffer))
+        {
+            HandleEvent(
+                quit,
+                &owner);
+
+            if (owner.state == PlayerState::Paused)
+            {
+                break;
+            }
+
+            // Seek 打断等待
+            if (seekPending ||
+                owner.seekController->IsHandled())
+            {
+                break;
+            }
+
+            double chunk =
+                std::min(delay, 0.1);
+
+            SDL_Delay(
+                static_cast<Uint32>(chunk * 1000.0));
+
+            delay -= chunk;
+        }
+
+        // 等待期间状态变化：放弃这一帧（RAII 自动释放�?
+        if (owner.state == PlayerState::Paused ||
+            seekPending ||
+            owner.seekController->IsHandled())
+        {
+            return FrameAction::Skip;
+        }
+    }
+    else if (!isStep)
+    {
+        // 无音频：按帧率匀速播�?
+        double delay =
+            media.speedController ?
+            media.speedController->GetFrameDelay(
+                media.videoFrameDuration) :
+            media.videoFrameDuration;
+
+        SDL_Delay(
+            static_cast<Uint32>(delay * 1000.0));
+    }
+
+    return FrameAction::Present;
 }
