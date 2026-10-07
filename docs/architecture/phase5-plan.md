@@ -106,3 +106,20 @@
 三样例 `--record` 全部 exit 0，FLV 时长 12.833 / 22.655 / 141.800 s，**字节数与 5.2 完全一致**（7280913 / 9666764 / 59694920），日志 ERROR/WARN = 0。
 
 **下一步**：5.3b 可继续把「取帧 + A/V 同步 + 丢帧」段外移（含多处 `continue`，需返回状态枚举，风险中高）；或按计划进入 5.4（switch/reconnect 编排）。
+
+### 5.4 Run() switch / reconnect 编排外移 —— 完成（提交 `6196853`）
+
+**内容**：把 `Player::Run()` 循环体顶部两段「播放列表切换请求」与「断网重连」编排（46 + 124 行）外移为
+`PlaybackSession::HandleSwitchRequest(bool& quit)` 与 `PlaybackSession::HandleReconnect(bool& quit)`。
+两段原本**恒以 `continue` 收尾**，故 `Run()` 改为「调用方法 + `continue`」；方法内 `continue` → `return`，
+`break`（中断重试 while）保持不变。方法内会话成员去 `session->` 前缀、媒体成员 `media->` → `media.`、
+Player 成员加 `owner.`（`state` / `bufferController` / `streamMonitor` / `configManager`）。
+
+**实测 diff**：`core/Player.cpp −158`（2818 → **2660** 行）、`core/PlaybackSession.cpp +181`（→ 1956）、`core/PlaybackSession.h +7`（→ 161）。
+纯机械搬运 + 前缀改写；注释按原字节保留。
+
+**验证**：`MSBuild Debug|x64` = 0 error / 32 warning；`Release|x64` = 0 error / 32 warning；
+三样例 `--record` 全部 exit 0，FLV 时长 12.833 / 22.655 / 141.800 s，**字节数与 5.3 完全一致**（7280913 / 9666764 / 59694920），日志 ERROR/WARN = 0。
+（本地文件回归不触发 switch/reconnect 路径，正确性主要靠「等价搬运 + 恒 continue」的静态论证。）
+
+**下一步**：5.3b（取帧 + A/V 同步 + 丢帧，含多处 `continue`，需状态枚举，风险中高）；或 5.5 阶段报告。
