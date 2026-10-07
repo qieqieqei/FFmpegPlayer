@@ -123,3 +123,23 @@ Player 成员加 `owner.`（`state` / `bufferController` / `streamMonitor` / `co
 （本地文件回归不触发 switch/reconnect 路径，正确性主要靠「等价搬运 + 恒 continue」的静态论证。）
 
 **下一步**：5.3b（取帧 + A/V 同步 + 丢帧，含多处 `continue`，需状态枚举，风险中高）；或 5.5 阶段报告。
+
+### 5.3b Run() 取帧 + A/V 同步 + 丢帧外移 —— 完成（提交 `56dd867`）
+
+**内容**：把 `Player::Run()` 循环体中段「取帧（含 seek 前旧帧排空）→ 空帧 idle / 缓冲门控 / EOF → A/V 同步等待 → 丢帧」整段（原 321–646 行，326 行）外移为
+`PlaybackSession::AcquireAndSyncFrame(FramePtr& frame, double& pts, bool& quit, bool& lastBufferingBlock)`，返回嵌套枚举 `PlaybackSession::FrameAction{ Skip, Present }`。
+`Run()` 现声明 `FramePtr frame; double pts = 0.0;`，调用后 `== FrameAction::Skip` 则 `continue`，否则 `PresentFrame(frame.get(), pts, ...)`。
+
+- 段内 9 处 `continue`：**drain 循环内 1 处保留 `continue`**（seek 前旧帧排空的内层 while），其余 **8 处 → `return FrameAction::Skip;`**；末尾补 `return FrameAction::Present;`。
+- 前缀改写：`media->` → `media.`；Player 成员 → `owner.`（`state` / `statistics` / `networkStatistics` / `bufferController` / `syncController` / `seekController` / `GetFramePts` / `HasAudio` / `UpdateStatistics` / `ClearFrameStepRequest` / `frameStepRequest` / `autoQuitOnEof` / `eofWaitStartMs`）；`session->` 去前缀（`seekPosition` / `seekPending` / `videoEof`）；`FramePtr frame;` 声明改参数、`double pts =` 改赋值。
+- `HandleEvent(quit, this)` 是 **app 层自由函数**（`app/Event.h`，签名 `(bool&, Player*)`）→ 段内改为 `HandleEvent(quit, &owner)`，`PlaybackSession.cpp` 新增 `#include "app/Event.h"`（**core → app 反向依赖，属既有 `Player.cpp` 已存在同类，登记阶段 8 收口**）。
+
+**实测 diff**：`core/Player.cpp −312`（2660 → **2348** 行）、`core/PlaybackSession.cpp +345`（→ 2301）、`core/PlaybackSession.h +14`（→ 175）。
+**`Run()` 现 110 行**（原 645 行 → 阶段 5 目标 ≤350 行大幅达成）。
+
+**脚本要点（复用）**：`codeOnly` 逐行分「代码区 / 字符串 / 注释」，**只在代码区**替换 —— 否则 `"[Gate] render gate state="` 这类字符串里的 `state` 会被误加 `owner.`；按行号断言锚点（321/324/338/646）；`continue` 计数断言（原文 9 处 → Skip 8 处）。
+
+**验证**：`MSBuild Debug|x64` = 0 error / 32 warning；`Release|x64` = 0 error / 32 warning；
+三样例 `--record` 全部 exit 0，FLV 时长 12.833 / 22.655 / 141.800 s，**字节数与 5.3 完全一致**（7280913 / 9666764 / 59694920），`dropFrame=0 / lateDrop=0`，日志 ERROR/WARN = 0。
+
+**下一步**：5.5 阶段提交 + `docs/architecture/phase5-report.md`。
