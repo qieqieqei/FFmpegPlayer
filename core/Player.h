@@ -449,18 +449,6 @@ private:
     // 媒体会话管线对象集合（随 OpenMedia/ReleaseMedia 重建）
     std::unique_ptr<MediaContext> media;
 
-    // 音频解码器（Audio 线程）
-    std::unique_ptr<AudioDecoder> audioDecoder;
-
-    // 音频重采样器（Audio 线程）
-    std::unique_ptr<AudioResampler> audioResampler;
-
-    // 变速不变调（Audio 线程使用，SetSpeed 跨线程）
-    std::unique_ptr<SpeedController> speedController;
-
-    // SDL 音频设备（回调线程 + Audio 线程）
-    std::unique_ptr<AudioDevice> audioDevice;
-
     // 音视频同步控制器（渲染线程）
     std::unique_ptr<SyncController> syncController;
 

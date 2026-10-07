@@ -17,7 +17,9 @@
 
 ### MediaContext（随媒体重建）
 - 管线对象：`demuxer`、`videoDecoder`、`hwDecoder`、`hwTransferFrame`、
-  `audioDecoder`、`audioResampler`、`speedController`、`syncController`、`seekController`
+  `audioDecoder`、`audioResampler`、`speedController`、`audioDevice`
+  - 注（规则3，以实证修正）：`syncController`/`seekController` 其实在 `Player::Init()` 创建、`Player::Close()` 重置，
+    属**会话级**，**不**入 MediaContext；`audioDevice` 在 `ReleaseMedia()` 被 reset，属随媒体。
 - 队列：`videoPacketQueue`、`audioPacketQueue`、`videoNetBuffer`、`videoFrameQueue`
 - 媒体派生状态：`hasAudioStream`、`duration`、`videoFrameDuration`、`currentMediaPath`、
   `lastVideoDropped/lastAudioDropped`
@@ -42,7 +44,7 @@
 | 步 | 内容 | 风险 | 验证 |
 |---|---|---|---|
 | 4.1 | 建 `core/MediaContext.h`（纯聚合 struct），先搬**解码/解复用一小组**：`demuxer/videoDecoder/hwDecoder/hwTransferFrame` | 低 | Debug|x64 0 error + 跑样例 |
-| 4.2 | 搬音频侧：`audioDecoder/audioResampler/speedController/syncController/seekController` | 低 | 同 |
+| 4.2 | 搬音频侧：`audioDecoder/audioResampler/speedController/audioDevice`（按 ReleaseMedia 边界） | 低 | 同 |
 | 4.3 | 搬队列：`videoPacketQueue/audioPacketQueue/videoNetBuffer/videoFrameQueue` 及媒体派生状态 | 中 | 同 |
 | 4.4 | 建 `core/PlaybackSession.{h,cpp}`：搬 `OpenMedia/ReleaseMedia/SwitchMedia/StartThreads/StopThreads/三 Loop` + 线程/退出标志；`Player` 转发 | 高 | Debug+Release 0 error + 全功能回归 |
 | 4.5 | 收尾：删转发样板，Player 收敛至 **200~500 行**（超 500 需解释职责收敛） | 中 | 行数统计 + 回归 |
@@ -58,3 +60,10 @@
 ## 5. 停止并报告的条件（沿用）
 
 编译错误无法定位 / 死锁 / join 卡死 / double-free / 长稳恶化 / Legacy 行为不确定 → **立即停止并报告**，不继续下一步。
+
+## 6. 执行记录（滚动更新）
+
+- **4.1 完成**（commit `e2afee2`）：建 `core/MediaContext.h`；搬 `demuxer/videoDecoder/hwDecoder/hwTransferFrame`（88 处引用改写）；
+  Player 增 `std::unique_ptr<MediaContext> media`（ctor `make_unique`）。Debug/Release 0 error；两个样例 `--record` 自然 EOF，exit 0 且 FLV 合法。
+- **4.2 完成**（commit 见下）：搬 `audioDecoder/audioResampler/speedController/audioDevice`（90 处改写）；
+  `syncController`/`seekController` 实证为会话级，保留在 Player。Debug/Release 0 error；两个样例 `--record` exit 0 且 FLV 合法。

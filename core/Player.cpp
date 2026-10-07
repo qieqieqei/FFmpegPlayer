@@ -602,17 +602,17 @@ bool Player::OpenMedia(
     if (hasAudioStream)
     {
         // 音频解码�?
-        audioDecoder =
+        media->audioDecoder =
             std::make_unique<AudioDecoder>();
 
-        if (!audioDecoder->Init(
+        if (!media->audioDecoder->Init(
             media->demuxer->GetAudioStream()->codecpar))
         {
             ErrorHandler::Log(
                 ErrorTag::Audio,
                 "AudioDecoder init failed, video only");
 
-            audioDecoder.reset();
+            media->audioDecoder.reset();
 
             hasAudioStream = false;
         }
@@ -621,10 +621,10 @@ bool Player::OpenMedia(
     if (hasAudioStream)
     {
         // SDL 音频设备（与重采样器输出一致：48000Hz / 双声�?/ S16�?
-        audioDevice =
+        media->audioDevice =
             std::make_unique<AudioDevice>();
 
-        if (!audioDevice->Init(
+        if (!media->audioDevice->Init(
             48000,
             2))
         {
@@ -632,7 +632,7 @@ bool Player::OpenMedia(
                 ErrorTag::Audio,
                 "AudioDevice init failed, video only");
 
-            audioDevice.reset();
+            media->audioDevice.reset();
 
             hasAudioStream = false;
         }
@@ -641,23 +641,23 @@ bool Player::OpenMedia(
     if (hasAudioStream)
     {
         // 重采样器
-        audioResampler =
+        media->audioResampler =
             std::make_unique<AudioResampler>();
 
         // 变速不变调（SOLA），组合包装�?
-        speedController =
+        media->speedController =
             std::make_unique<SpeedController>();
 
-        speedController->Init(
+        media->speedController->Init(
             48000,
             2);
 
         // 恢复用户设置的速度 / 音量
-        speedController->SetSpeed(playbackSpeed);
+        media->speedController->SetSpeed(playbackSpeed);
 
-        audioDevice->SetSpeedFactor(playbackSpeed);
+        media->audioDevice->SetSpeedFactor(playbackSpeed);
 
-        audioDevice->SetVolume(volume);
+        media->audioDevice->SetVolume(volume);
     }
 
     if (!hasAudioStream)
@@ -670,8 +670,8 @@ bool Player::OpenMedia(
     // 8.1：同步控制器绑定音频主时钟（无音频时解绑�?
     // MasterClock 自动回退视频时钟�?
     syncController->SetAudioClock(
-        audioDevice ?
-        audioDevice->GetClock() :
+        media->audioDevice ?
+        media->audioDevice->GetClock() :
         nullptr);
 
     // ---------- Seek 控制器绑�?----------
@@ -750,12 +750,12 @@ bool Player::Run()
 
     // v2: live pre-buffer - keep audio paused until watermark reached
     // (gate in render loop releases it once via state-change, not per-frame)
-    if (audioDevice &&
+    if (media->audioDevice &&
         !(useNetBuffer &&
             bufferController &&
             bufferController->IsConsumingBlocked()))
     {
-        audioDevice->SetPaused(false);
+        media->audioDevice->SetPaused(false);
     }
 
     Logger::Info()
@@ -803,12 +803,12 @@ bool Player::Run()
                 state = PlayerState::Playing;
 
                 // v2: pre-buffer gate (see Run())
-                if (audioDevice &&
+                if (media->audioDevice &&
                     !(useNetBuffer &&
                         bufferController &&
                         bufferController->IsConsumingBlocked()))
                 {
-                    audioDevice->SetPaused(false);
+                    media->audioDevice->SetPaused(false);
                 }
 
                 autoAdvancing = false;
@@ -857,12 +857,12 @@ bool Player::Run()
                     state = PlayerState::Playing;
 
                     // v2: pre-buffer gate (see Run())
-                    if (audioDevice &&
+                    if (media->audioDevice &&
                         !(useNetBuffer &&
                             bufferController &&
                             bufferController->IsConsumingBlocked()))
                     {
-                        audioDevice->SetPaused(false);
+                        media->audioDevice->SetPaused(false);
                     }
 
                     reconnectAttempts.store(0);
@@ -1035,9 +1035,9 @@ bool Player::Run()
                 {
                     lastBufferingBlock = true;
 
-                    if (audioDevice)
+                    if (media->audioDevice)
                     {
-                        audioDevice->SetPaused(true);
+                        media->audioDevice->SetPaused(true);
                     }
 
                     videoNetBuffer.SetDurationTrimEnabled(false);
@@ -1046,8 +1046,8 @@ bool Player::Run()
                         << "[Player] Buffer gate : HOLD state="
                         << bufferController->GetStateName()
                         << " aclk="
-                        << (audioDevice ?
-                            audioDevice->GetAudioClock() : -1.0)
+                        << (media->audioDevice ?
+                            media->audioDevice->GetAudioClock() : -1.0)
                         << " vclk="
                         << syncController->GetVideoClockTime()
                         << std::endl;
@@ -1072,17 +1072,17 @@ bool Player::Run()
                 double anchorPts =
                     videoNetBuffer.GetFrontPts();
 
-                if (audioDevice)
+                if (media->audioDevice)
                 {
-                    audioDevice->ResetClock(
+                    media->audioDevice->ResetClock(
                         anchorPts >= 0.0 ? anchorPts : 0.0);
                 }
 
                 videoNetBuffer.SetDurationTrimEnabled(true);
 
-                if (audioDevice)
+                if (media->audioDevice)
                 {
-                    audioDevice->SetPaused(false);
+                    media->audioDevice->SetPaused(false);
                 }
 
                 Logger::Info()
@@ -1090,8 +1090,8 @@ bool Player::Run()
                     << (bufferController ?
                         bufferController->GetStateName() : "?")
                     << " aclk="
-                    << (audioDevice ?
-                        audioDevice->GetAudioClock() : -1.0)
+                    << (media->audioDevice ?
+                        media->audioDevice->GetAudioClock() : -1.0)
                     << " vclk="
                     << syncController->GetVideoClockTime()
                     << std::endl;
@@ -1211,9 +1211,9 @@ bool Player::Run()
             {
                 driftTick = 0;
 
-                if (audioDevice)
+                if (media->audioDevice)
                 {
-                    audioDevice->GetClock()->CorrectDrift();
+                    media->audioDevice->GetClock()->CorrectDrift();
                 }
             }
 
@@ -1281,8 +1281,8 @@ bool Player::Run()
         {
             // 无音频：按帧率匀速播�?
             double delay =
-                speedController ?
-                speedController->GetFrameDelay(
+                media->speedController ?
+                media->speedController->GetFrameDelay(
                     videoFrameDuration) :
                 videoFrameDuration;
 
@@ -1336,16 +1336,16 @@ bool Player::Run()
         {
             lastBufferingBlock = bufferingBlock;
 
-            if (!bufferingBlock && audioDevice)
+            if (!bufferingBlock && media->audioDevice)
             {
                 // v2: release edge via render path - re-anchor audio clock
                 // to the frame just rendered (skip frozen-clock catch-up).
-                audioDevice->ResetClock(pts);
+                media->audioDevice->ResetClock(pts);
             }
 
-            if (audioDevice)
+            if (media->audioDevice)
             {
-                audioDevice->SetPaused(bufferingBlock);
+                media->audioDevice->SetPaused(bufferingBlock);
             }
 
             videoNetBuffer.SetDurationTrimEnabled(!bufferingBlock);
@@ -1356,8 +1356,8 @@ bool Player::Run()
                 << " state="
                 << (bufferController ? bufferController->GetStateName() : "?")
                 << " aclk="
-                << (audioDevice ?
-                    audioDevice->GetAudioClock() : -1.0)
+                << (media->audioDevice ?
+                    media->audioDevice->GetAudioClock() : -1.0)
                 << " vclk="
                 << syncController->GetVideoClockTime()
                 << std::endl;
@@ -1720,9 +1720,9 @@ void Player::Pause()
         state = PlayerState::Paused;
 
         // 暂停声卡（队列继续积压，管线自然停止�?
-        if (audioDevice)
+        if (media->audioDevice)
         {
-            audioDevice->SetPaused(true);
+            media->audioDevice->SetPaused(true);
         }
 
         Logger::Info()
@@ -1737,9 +1737,9 @@ void Player::Resume()
     {
         state = PlayerState::Playing;
 
-        if (audioDevice)
+        if (media->audioDevice)
         {
-            audioDevice->SetPaused(false);
+            media->audioDevice->SetPaused(false);
         }
 
         Logger::Info()
@@ -1796,15 +1796,15 @@ void Player::SetPlaybackSpeed(
     playbackSpeed = speed;
 
     // 音频变速不变调（SOLA�?
-    if (speedController)
+    if (media->speedController)
     {
-        speedController->SetSpeed(speed);
+        media->speedController->SetSpeed(speed);
     }
 
     // 音频主时钟按速度换算
-    if (audioDevice)
+    if (media->audioDevice)
     {
-        audioDevice->SetSpeedFactor(speed);
+        media->audioDevice->SetSpeedFactor(speed);
     }
 
     Logger::Info()
@@ -1835,9 +1835,9 @@ void Player::SetVolume(
 
     volume = percent;
 
-    if (audioDevice)
+    if (media->audioDevice)
     {
-        audioDevice->SetVolume(volume);
+        media->audioDevice->SetVolume(volume);
     }
 }
 
@@ -2160,8 +2160,8 @@ void Player::UpdateStatistics()
         GetVideoQueueSize(),           // 视频包缓冲（直播=NetworkBuffer�?
         GetAudioQueueSize(),           // 音频包缓�?
         videoFrameQueue.Size(),            // 视频帧缓�?
-        audioDevice ?
-            audioDevice->GetQueuedSize() : 0,   // 音频缓冲（字节）
+        media->audioDevice ?
+            media->audioDevice->GetQueuedSize() : 0,   // 音频缓冲（字节）
         48000,                             // 音频采样�?
         2);                                // 音频声道
 
@@ -2213,11 +2213,11 @@ void Player::UpdateStatistics()
 
     double bufferedMs = videoMs;
 
-    if (audioDevice)
+    if (media->audioDevice)
     {
-        int sr = audioDevice->GetSampleRate();
+        int sr = media->audioDevice->GetSampleRate();
 
-        int ch = audioDevice->GetChannels();
+        int ch = media->audioDevice->GetChannels();
 
         double bytesPerSec =
             (sr > 0 && ch > 0) ?
@@ -2225,7 +2225,7 @@ void Player::UpdateStatistics()
             0.0;
 
         double aclkSec =
-            audioDevice->GetAudioClock();
+            media->audioDevice->GetAudioClock();
 
         double backPtsSec =
             useNetBuffer ?
@@ -2248,7 +2248,7 @@ void Player::UpdateStatistics()
         {
             audioMs =
                 (bytesPerSec > 0.0) ?
-                audioDevice->GetQueuedSize() *
+                media->audioDevice->GetQueuedSize() *
                     1000.0 / bytesPerSec :
                 0.0;
         }
@@ -4161,12 +4161,12 @@ void Player::AudioDecodeLoop()
             // EOF 冲刷：队列取空且文件已读�?
             if (demuxEof.load() &&
                 !audioEof.load() &&
-                audioDecoder)
+                media->audioDecoder)
             {
                 audioEof.store(true);
 
                 // 发�?NULL 包触发解码器冲刷
-                audioDecoder->SendPacket(nullptr);
+                media->audioDecoder->SendPacket(nullptr);
 
                 // 取出所有剩余帧
                 FramePtr f;
@@ -4174,7 +4174,7 @@ void Player::AudioDecodeLoop()
                 while (true)
                 {
                     DecodeResult r =
-                        audioDecoder->ReceiveFrame(f);
+                        media->audioDecoder->ReceiveFrame(f);
 
                     if (r != DecodeResult::Success)
                     {
@@ -4217,10 +4217,10 @@ void Player::AudioDecodeLoop()
             continue;
         }
 
-        if (!audioDecoder ||
-            !audioResampler ||
-            !speedController ||
-            !audioDevice)
+        if (!media->audioDecoder ||
+            !media->audioResampler ||
+            !media->speedController ||
+            !media->audioDevice)
         {
             // 音频链未就绪：丢弃（RAII 自动释放�?
             continue;
@@ -4229,7 +4229,7 @@ void Player::AudioDecodeLoop()
         // ---------- 解码 ----------
 
         // 8.4：send 为同步消费，pkt 用后自动释放
-        audioDecoder->SendPacket(pkt.get());
+        media->audioDecoder->SendPacket(pkt.get());
 
         // 取出所有解码出�?PCM �?
         FramePtr f;
@@ -4237,7 +4237,7 @@ void Player::AudioDecodeLoop()
         while (true)
         {
             DecodeResult r =
-                audioDecoder->ReceiveFrame(f);
+                media->audioDecoder->ReceiveFrame(f);
 
             if (r != DecodeResult::Success)
             {
@@ -4317,18 +4317,18 @@ void Player::ReleaseMedia()
         syncController->SetAudioClock(nullptr);
     }
 
-    if (audioDevice)
+    if (media->audioDevice)
     {
-        audioDevice->Close();
+        media->audioDevice->Close();
     }
 
-    audioDevice.reset();
+    media->audioDevice.reset();
 
-    speedController.reset();
+    media->speedController.reset();
 
-    audioResampler.reset();
+    media->audioResampler.reset();
 
-    audioDecoder.reset();
+    media->audioDecoder.reset();
 
     statistics.reset();
 
@@ -4468,9 +4468,9 @@ void Player::ProcessAudioFrame(
     }
 
     // 惰性初始化重采样器
-    if (!audioResampler->IsReady())
+    if (!media->audioResampler->IsReady())
     {
-        if (!audioResampler->Init(frame))
+        if (!media->audioResampler->Init(frame))
         {
             return;
         }
@@ -4515,7 +4515,7 @@ void Player::ProcessAudioFrame(
     uint8_t pcmBuffer[192000];
 
     int samples =
-        audioResampler->Convert(
+        media->audioResampler->Convert(
             frame,
             pcmBuffer,
             sizeof(pcmBuffer));
@@ -4527,14 +4527,14 @@ void Player::ProcessAudioFrame(
 
     int pcmSize =
         samples *
-        audioResampler->GetOutputChannels() *
+        media->audioResampler->GetOutputChannels() *
         2;   // S16：每采样 2 字节
 
     // 变速不变调（speed == 1 时直通）
     uint8_t outBuffer[384000];
 
     int outSize =
-        speedController->Process(
+        media->speedController->Process(
             pcmBuffer,
             pcmSize,
             outBuffer,
@@ -4542,7 +4542,7 @@ void Player::ProcessAudioFrame(
 
     if (outSize > 0)
     {
-        audioDevice->PushPCM(
+        media->audioDevice->PushPCM(
             outBuffer,
             outSize,
             &audioAbort);
@@ -4550,11 +4550,11 @@ void Player::ProcessAudioFrame(
 
     // 取完剩余输出
     while ((outSize =
-        speedController->Flush(
+        media->speedController->Flush(
             outBuffer,
             sizeof(outBuffer))) > 0)
     {
-        audioDevice->PushPCM(
+        media->audioDevice->PushPCM(
             outBuffer,
             outSize,
             &audioAbort);
@@ -4565,29 +4565,29 @@ void Player::AudioSeekCleanup(
     double target)
 {
     // 清空音频解码器（Seek 后必须，否则解出旧数据）
-    if (audioDecoder)
+    if (media->audioDecoder)
     {
-        audioDecoder->Flush();
+        media->audioDecoder->Flush();
     }
 
     // 清空重采样器内部缓冲
-    if (audioResampler)
+    if (media->audioResampler)
     {
-        audioResampler->Reset();
+        media->audioResampler->Reset();
     }
 
     // 清空变速器内部缓冲
-    if (speedController)
+    if (media->speedController)
     {
-        speedController->Reset();
+        media->speedController->Reset();
     }
 
     // 重置音频主时�?+ 清空 PCM 队列
-    if (audioDevice)
+    if (media->audioDevice)
     {
-        audioDevice->ResetClock(target);
+        media->audioDevice->ResetClock(target);
 
-        audioDevice->ResetInterrupt();
+        media->audioDevice->ResetInterrupt();
     }
 
     // 恢复音频推送（RequestSeek 时置位了 abort�?
@@ -4648,5 +4648,5 @@ double Player::GetFramePts(
 bool Player::HasAudio() const
 {
     return hasAudioStream &&
-        audioDevice != nullptr;
+        media->audioDevice != nullptr;
 }

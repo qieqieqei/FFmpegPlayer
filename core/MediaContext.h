@@ -6,7 +6,11 @@
 // 阶段4：把 Player（上帝对象）中"随媒体生死"的成员拆出来。
 // 随 OpenMedia / ReleaseMedia 重建；由 Player 持有（unique_ptr<MediaContext>）。
 //
-// 本结构只承载对象，不承担行为——行为仍留在 Player/后续 PlaybackSession。
+// 分组依据（实证，规则3）：以 ReleaseMedia() 的重置边界为准——
+//   在该函数里被 reset() 的对象 => 属于 MediaContext；
+//   在 Init() 创建、Close() 重置的对象（syncController/seekController）=> 留在 Player。
+//
+// 本结构只承载对象，不承担行为——行为仍留在 Player / 后续 PlaybackSession。
 // ============================================================
 
 #include <memory>
@@ -14,10 +18,16 @@
 #include "pipeline/demux/Demuxer.h"
 #include "pipeline/video/VideoDecoder.h"
 #include "hardware/HardwareDecoder.h"
+#include "pipeline/audio/AudioDecoder.h"
+#include "pipeline/audio/AudioResampler.h"
+#include "pipeline/audio/SpeedController.h"
+#include "output/audio/AudioDevice.h"
 #include "infra/FFmpegPtr.h"
 
 struct MediaContext
 {
+    // ---------- 解复用 / 视频解码 ----------
+
     // 解复用器（Demux 线程）
     std::unique_ptr<Demuxer> demuxer;
 
@@ -29,4 +39,18 @@ struct MediaContext
 
     // 硬件帧 -> 系统内存的拷贝目标（Video 线程，复用）
     AVFramePtr hwTransferFrame;
+
+    // ---------- 音频链路 ----------
+
+    // 音频解码器（Audio 线程）
+    std::unique_ptr<AudioDecoder> audioDecoder;
+
+    // 音频重采样器（Audio 线程）
+    std::unique_ptr<AudioResampler> audioResampler;
+
+    // 变速不变调（Audio 线程使用，SetSpeed 跨线程）
+    std::unique_ptr<SpeedController> speedController;
+
+    // SDL 音频设备（回调线程 + Audio 线程）
+    std::unique_ptr<AudioDevice> audioDevice;
 };
