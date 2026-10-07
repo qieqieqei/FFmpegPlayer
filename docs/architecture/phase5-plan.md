@@ -143,3 +143,15 @@ Player 成员加 `owner.`（`state` / `bufferController` / `streamMonitor` / `co
 三样例 `--record` 全部 exit 0，FLV 时长 12.833 / 22.655 / 141.800 s，**字节数与 5.3 完全一致**（7280913 / 9666764 / 59694920），`dropFrame=0 / lateDrop=0`，日志 ERROR/WARN = 0。
 
 **下一步**：5.5 阶段提交 + `docs/architecture/phase5-report.md`。
+
+### 5.5 阶段收尾 —— 完成（报告 `docs/architecture/phase5-report.md`）
+
+阶段 5 全部子步（5.1 队列路由 / 5.2 呈现簇 / 5.3 呈现段 / 5.4 switch-reconnect / 5.3b 取帧+同步+丢帧）已完成并推送；
+本子步产出阶段报告并收口。
+
+**结果**：`core/Player.cpp` 3060 → **2348** 行；`Player::Run()` 645 → **110** 行；新增 `output/video/VideoPresenter.{h,cpp}`（107/206）；
+`PlaybackSession.{h,cpp}` 113/1626 → 175/2301。三项均优于计划预期（Player.cpp ≈2400~2600、Run() ≈300~350）。
+
+**验证**：阶段内每子步 Debug/Release 均 0 error / 32 warning；三样例 FLV **字节数逐位一致**（7280913 / 9666764 / 59694920）、时长 12.833 / 22.655 / 141.800 s、无 ERROR/WARN。
+
+**下一步**：阶段 6（Demux/Sync + 统计收敛 + legacy 处置）。
