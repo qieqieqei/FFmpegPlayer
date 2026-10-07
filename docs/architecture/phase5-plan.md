@@ -86,3 +86,23 @@
 **验证**：`MSBuild Debug|x64` = 0 error / 37 warning 行（C4828 ×35 全来自既有 `output/osd/FontManager.h`、C4244 ×2 为既有 `Player.cpp:1767/1768`，**无新增警告类型**；C4828 计数随本次重建的编译单元数上升，5.1 时为 32 行）；`Release|x64` = 0 error（同警告分布）；三样例 `--record` 全部 exit 0，FLV 时长 **12.833 / 22.655 / 141.800 s** 且**字节数与 5.1 完全一致**（7280913 / 9666764 / 59694920），日志 ERROR/WARN = 0。
 
 **踩坑（复用）**：脚本按“整行精确匹配”改写 `Run()` 的渲染实参时，漏掉同名字符串之外的另一处使用 —— `osdManager->SetSubtitle(renderer, ...)` 是 **16 空格缩进**的嵌套实参（`RenderFrame` 的是 12 空格），须单独锚定；否则 `MSBuild` 报 `error C2065: “renderer”: 未声明的标识符`。
+
+### 5.3 Run() 呈现段外移 —— 完成（提交 `3cdbc72`）
+
+**内容**：把 `Player::Run()` 循环体尾部的「渲染 → 渲染统计 → 截图快照 → 时间/进度 → 直播缓冲门控跳变」段（原 71 行）外移为
+`PlaybackSession::PresentFrame(AVFrame* frame, double pts, bool& quit, bool& lastBufferingBlock)`；
+`Run()` 处只留一行调用。`Run()` 仍保留取帧 / A/V 同步 / 丢帧状态机（属 5.3b 候选）。
+
+**deviation（记）**：计划原写「→ VideoPresenter 的呈现方法」。因该段需要 core 侧状态
+（`statistics` / `networkStatistics` / `bufferController` / `syncController` / `SetCurrentTime` / `UpdateStatistics`），
+放进 `output/` 会新增 `output → core` 反向依赖（`dependency.md` 明令禁止，阶段 8 才拆）；
+且 `target-architecture.md §3` 把「主循环」职责划给 `core/PlaybackSession`。故落点改为 `PlaybackSession`。
+层级检查：`core → output`（调用 `RenderFrame`）合规。
+
+**实测 diff**：`core/PlaybackSession.cpp +87`（纯 ASCII 注释）、`core/PlaybackSession.h +10`、`core/Player.cpp −64`（2882 → 2818 行）。
+`PlaybackSession.h` 仍 UTF-8/ASCII；`Player.cpp` / `PlaybackSession.cpp` 保持原 GBK 字节（latin1 裸字节读写）。
+
+**验证**：`MSBuild Debug|x64` = 0 error / 32 warning；`Release|x64` = 0 error / 32 warning；
+三样例 `--record` 全部 exit 0，FLV 时长 12.833 / 22.655 / 141.800 s，**字节数与 5.2 完全一致**（7280913 / 9666764 / 59694920），日志 ERROR/WARN = 0。
+
+**下一步**：5.3b 可继续把「取帧 + A/V 同步 + 丢帧」段外移（含多处 `continue`，需返回状态枚举，风险中高）；或按计划进入 5.4（switch/reconnect 编排）。
