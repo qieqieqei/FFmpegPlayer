@@ -113,8 +113,26 @@
 
 ## 6. 执行记录（滚动回填）
 
-- **6.1 …**（待填）
-- **6.2 …**（待填）
-- **6.3 …**（待填）
-- **6.4 …**（待填）
-- **6.5 …**（待填）
+- **6.1 Legacy 归档**：`b87a6af` `build(vcxproj): stop compiling archived legacy dead-weight (phase 6.1)`；登记回填 `d8945b3` `docs(architecture): record phase 6.1 legacy disposition in register`。摘除 5 条在编死重（AudioFilter/FilterGraph/VideoFilter/RTSPClient/Clock）的 vcxproj 条目（114→104）+ filters 块（104→94），**不删源码**。Release Rebuild 0 error / 43 warn（40×C4828 来自既有 `FontManager.h` + 3×C4244 既有，均为基线）；三样例字节一致。
+- **6.2 `UpdateStatistics` 外移**：`59457ee` `refactor(core): move UpdateStatistics into PlaybackSession (phase 6.2)`。移入 198 行；`statistics/networkStatistics/bufferController/streamMonitor/syncController`→`owner.*`，队列 getter 去前缀，`media->`→`media.`。Debug/Release 0 error / 32 warn；三样例字节一致。`Player.cpp` 2348→2150。
+- **6.3 Seek 编排外移**：`20fe1a1` `refactor(core): move seek orchestration into PlaybackSession (phase 6.3)`。`RequestSeek` + `HasSeekRequest/GetSeekPosition/IsSeekHandled/ClearSeekHandled` 移入；Player 原位改**薄转发**（`seekController` 仍由 Player 持有，session 用 `owner.seekController`）。Debug/Release 0 error / 32 warn；三样例字节一致。`Player.cpp` 2150→2108（脚本净删 42；坑见 §7②）。
+- **6.4 Playlist 导航外移**：`c7128ef` `refactor(core): move playlist navigation into PlaybackSession (phase 6.4)`。`AddToPlaylist/ExpandPlaylistWithSiblings/PlayPrevious/PlayNext/GetPlaylistIndex/GetPlaylistCount/GetCurrentPath` 移入；`playlistManager` 仍由 Player 持有，session 用 `owner.playlistManager`；Player 保留 7 个薄转发（`app/main`、`app/Event` 调用点不变）。Debug/Release 0 error / 32 warn；三样例字节一致（7280913/9666764/59694920）。`Player.cpp` 2108→**1955**。
+- **6.5 报告 + 收口**：`docs/architecture/phase6-report.md`。
+
+### 阶段 6 结果（起点 `419d768`）
+
+| 文件 | 阶段 6 前 | 阶段 6 后 |
+|---|---|---|
+| `core/Player.h` | 476 | 473 |
+| `core/Player.cpp` | 2348 | **1955** |
+| `core/PlaybackSession.h` | 175 | 208 |
+| `core/PlaybackSession.cpp` | 2301 | 2756 |
+| `FFmpeg_text_claw.vcxproj` 条目 | 114 | 104 |
+
+> 说明：`Player.cpp` 未达「800~1300」目标区间，因剩余体量几乎全为**输出链**（编码/复用/推流/HLS ≈ 800 行）+ `Init/Close/LoadConfig`（装配）+ UI 访问器，按 `target-architecture.md §6` 分归**阶段 7 / 8**；阶段 6 的 features/统计编排已全部外移。
+
+## 7. 阶段 6 坑（复现要点）
+
+1. **vcxproj 摘条目不删源码**：`legacy/` 9 项外部引用实测为空后仅解编，随时可回接。
+2. **薄转发替换漏 `{` 行**：若 `pl.slice(s0, b0)` 未含 `{` 行，会生成无 `{` 的函数体 → MSVC `C3646 'session' unknown override specifier`。修法 `slice(s0, b0 + 1)` 再拼 `[fwd, '}']`；改前先从 `%TEMP%/phase64_backup` 恢复。
+3. **同名成员前缀仅在代码区替换**：`playlistManager`→`owner.playlistManager`；`session->switchPath/switchRequested` 去前缀。
