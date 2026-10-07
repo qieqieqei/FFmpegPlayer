@@ -262,11 +262,11 @@ bool Player::OpenMedia(
     currentMediaPath = path;
 
     // 复位队列打断状�?
-    videoPacketQueue.ResetInterrupt();
+    media->videoPacketQueue.ResetInterrupt();
 
-    audioPacketQueue.ResetInterrupt();
+    media->audioPacketQueue.ResetInterrupt();
 
-    videoFrameQueue.ResetInterrupt();
+    media->videoFrameQueue.ResetInterrupt();
 
     // ---------- 解复用器 ----------
 
@@ -299,17 +299,17 @@ bool Player::OpenMedia(
 
     // 直播流：Demux<->Decode 队列切换 NetworkBuffer（满丢最旧，低延迟）
     // 点播/本地文件：保�?PacketQueue 满阻塞背�?
-    useNetBuffer =
+    media->useNetBuffer =
         media->demuxer->IsLive();
 
     // 8.5：同步策略切直播 / 点播（LiveClock vs DropController�?
     if (syncController)
     {
         syncController->SetLiveMode(
-            useNetBuffer);
+            media->useNetBuffer);
     }
 
-    if (useNetBuffer)
+    if (media->useNetBuffer)
     {
         int cap = 600;
 
@@ -372,10 +372,10 @@ bool Player::OpenMedia(
             syncController->SetBufferStableMode(stableBuffer);
         }
 
-        videoNetBuffer.SetMaxSize(cap);
+        media->videoNetBuffer.SetMaxSize(cap);
 
         // v2: memory cap (one of the three limits; default 64MB)
-        videoNetBuffer.SetMaxMemoryBytes(64 * 1024 * 1024);
+        media->videoNetBuffer.SetMaxMemoryBytes(64 * 1024 * 1024);
 
         // 8.5：视频队列时长上限——积压超�?liveQueueMs 丢旧包追最�?
         // （与包数上限叠加；GOP 感知，不撕裂解码链）
@@ -388,7 +388,7 @@ bool Player::OpenMedia(
             // low latency comes from low water marks, NOT from shrinking the
             // network buffer (shrinking to 500ms caused constant rebuffering
             // oscillation around the high-water mark).
-            videoNetBuffer.SetLiveDurationMs(
+            media->videoNetBuffer.SetLiveDurationMs(
                 liveMaxQueueMs,
                 liveVStream->time_base.num,
                 liveVStream->time_base.den);
@@ -402,7 +402,7 @@ bool Player::OpenMedia(
 
         if (liveAStream)
         {
-            audioPacketQueue.SetLiveMode(
+            media->audioPacketQueue.SetLiveMode(
                 true,
                 liveAStream->time_base.num,
                 liveAStream->time_base.den,
@@ -410,7 +410,7 @@ bool Player::OpenMedia(
         }
         else
         {
-            audioPacketQueue.SetLiveMode(
+            media->audioPacketQueue.SetLiveMode(
                 true,
                 1,
                 90000,
@@ -463,12 +463,12 @@ bool Player::OpenMedia(
             << std::endl;
     }
 
-    duration =
+    media->duration =
         media->demuxer->GetDuration();
 
     Logger::Info()
         << "[Player] Duration : "
-        << duration
+        << media->duration
         << " s"
         << std::endl;
 
@@ -487,7 +487,7 @@ bool Player::OpenMedia(
 
     // 8.5：直播解码级低延迟（avcodec_open2 �?flags=low_delay�?
     media->videoDecoder->SetLowDelay(
-        useNetBuffer);
+        media->useNetBuffer);
 
     if (!media->videoDecoder->Init(
         vStream->codecpar))
@@ -537,12 +537,12 @@ bool Player::OpenMedia(
         av_q2d(fpsRat) :
         25.0;
 
-    videoFrameDuration =
+    media->videoFrameDuration =
         1.0 / fps;
 
     Logger::Info()
         << "[Player] Video Frame Duration : "
-        << videoFrameDuration
+        << media->videoFrameDuration
         << " s"
         << std::endl;
 
@@ -596,10 +596,10 @@ bool Player::OpenMedia(
 
     // ---------- 音频链路�?.0 独立 Audio 线程�?----------
 
-    hasAudioStream =
+    media->hasAudioStream =
         media->demuxer->HasAudio();
 
-    if (hasAudioStream)
+    if (media->hasAudioStream)
     {
         // 音频解码�?
         media->audioDecoder =
@@ -614,11 +614,11 @@ bool Player::OpenMedia(
 
             media->audioDecoder.reset();
 
-            hasAudioStream = false;
+            media->hasAudioStream = false;
         }
     }
 
-    if (hasAudioStream)
+    if (media->hasAudioStream)
     {
         // SDL 音频设备（与重采样器输出一致：48000Hz / 双声�?/ S16�?
         media->audioDevice =
@@ -634,11 +634,11 @@ bool Player::OpenMedia(
 
             media->audioDevice.reset();
 
-            hasAudioStream = false;
+            media->hasAudioStream = false;
         }
     }
 
-    if (hasAudioStream)
+    if (media->hasAudioStream)
     {
         // 重采样器
         media->audioResampler =
@@ -660,7 +660,7 @@ bool Player::OpenMedia(
         media->audioDevice->SetVolume(volume);
     }
 
-    if (!hasAudioStream)
+    if (!media->hasAudioStream)
     {
         Logger::Warn()
             << "[Player] Video only mode"
@@ -679,9 +679,9 @@ bool Player::OpenMedia(
 
     seekController->Attach(
         media->demuxer.get(),
-        &videoPacketQueue,
-        &audioPacketQueue,
-        &videoFrameQueue);
+        &media->videoPacketQueue,
+        &media->audioPacketQueue,
+        &media->videoFrameQueue);
 
     // ---------- 字幕自动加载（同路径 .srt / .ass�?----------
 
@@ -751,7 +751,7 @@ bool Player::Run()
     // v2: live pre-buffer - keep audio paused until watermark reached
     // (gate in render loop releases it once via state-change, not per-frame)
     if (media->audioDevice &&
-        !(useNetBuffer &&
+        !(media->useNetBuffer &&
             bufferController &&
             bufferController->IsConsumingBlocked()))
     {
@@ -804,7 +804,7 @@ bool Player::Run()
 
                 // v2: pre-buffer gate (see Run())
                 if (media->audioDevice &&
-                    !(useNetBuffer &&
+                    !(media->useNetBuffer &&
                         bufferController &&
                         bufferController->IsConsumingBlocked()))
                 {
@@ -858,7 +858,7 @@ bool Player::Run()
 
                     // v2: pre-buffer gate (see Run())
                     if (media->audioDevice &&
-                        !(useNetBuffer &&
+                        !(media->useNetBuffer &&
                             bufferController &&
                             bufferController->IsConsumingBlocked()))
                     {
@@ -972,7 +972,7 @@ bool Player::Run()
         if (seekController->IsHandled())
         {
             while ((frame =
-                videoFrameQueue.Pop(0)))
+                media->videoFrameQueue.Pop(0)))
             {
                 // 旧帧（pts 小于目标）：丢弃（RAII 自动释放�?
                 if (GetFramePts(frame.get()) <
@@ -998,7 +998,7 @@ bool Player::Run()
         {
             // 正常取帧（最多等 10ms�?
             frame =
-                videoFrameQueue.Pop(10);
+                media->videoFrameQueue.Pop(10);
         }
 
         // ---------- 没有�?----------
@@ -1011,7 +1011,7 @@ bool Player::Run()
             // render loop never reaches UpdateStatistics() and the controller
             // stays in Prebuffering forever (deadlock: gated decode threads
             // never produce frames, no frame -> no Update -> no release).
-            if (useNetBuffer &&
+            if (media->useNetBuffer &&
                 bufferController &&
                 bufferController->IsConsumingBlocked())
             {
@@ -1040,7 +1040,7 @@ bool Player::Run()
                         media->audioDevice->SetPaused(true);
                     }
 
-                    videoNetBuffer.SetDurationTrimEnabled(false);
+                    media->videoNetBuffer.SetDurationTrimEnabled(false);
 
                     Logger::Info()
                         << "[Player] Buffer gate : HOLD state="
@@ -1070,7 +1070,7 @@ bool Player::Run()
                 lastBufferingBlock = false;
 
                 double anchorPts =
-                    videoNetBuffer.GetFrontPts();
+                    media->videoNetBuffer.GetFrontPts();
 
                 if (media->audioDevice)
                 {
@@ -1078,7 +1078,7 @@ bool Player::Run()
                         anchorPts >= 0.0 ? anchorPts : 0.0);
                 }
 
-                videoNetBuffer.SetDurationTrimEnabled(true);
+                media->videoNetBuffer.SetDurationTrimEnabled(true);
 
                 if (media->audioDevice)
                 {
@@ -1114,7 +1114,7 @@ bool Player::Run()
 
             // 视频解码完毕：显示最后一帧，等待用户操作
             if (videoEof.load() &&
-                videoFrameQueue.Size() == 0)
+                media->videoFrameQueue.Size() == 0)
             {
                 if (state != PlayerState::EndOfFile)
                 {
@@ -1162,7 +1162,7 @@ bool Player::Run()
                     << (bufferController ?
                         bufferController->GetStateName() : "?")
                     << " q="
-                    << videoFrameQueue.Size()
+                    << media->videoFrameQueue.Size()
                     << std::endl;
             }
 
@@ -1222,7 +1222,7 @@ bool Player::Run()
             double delay =
                 syncController->GetVideoDelay(
                     pts,
-                    videoFrameDuration);
+                    media->videoFrameDuration);
 
             if (syncController->ShouldDrop(delay))
             {
@@ -1242,7 +1242,7 @@ bool Player::Run()
                 delay <= 2.0 &&
                 !quit &&
                 (!syncController->IsLiveMode() ||
-                    useNetBuffer))
+                    media->useNetBuffer))
             {
                 HandleEvent(
                     quit,
@@ -1283,8 +1283,8 @@ bool Player::Run()
             double delay =
                 media->speedController ?
                 media->speedController->GetFrameDelay(
-                    videoFrameDuration) :
-                videoFrameDuration;
+                    media->videoFrameDuration) :
+                media->videoFrameDuration;
 
             SDL_Delay(
                 static_cast<Uint32>(delay * 1000.0));
@@ -1328,7 +1328,7 @@ bool Player::Run()
         // 直播缓冲状态跳变提示（7.3）：进入"缓冲�?时一次性打�?
         // v2: buffer gate state sync (transition-driven, no per-frame toggle)
         bool bufferingBlock =
-            useNetBuffer &&
+            media->useNetBuffer &&
             bufferController &&
             bufferController->IsConsumingBlocked();
 
@@ -1348,7 +1348,7 @@ bool Player::Run()
                 media->audioDevice->SetPaused(bufferingBlock);
             }
 
-            videoNetBuffer.SetDurationTrimEnabled(!bufferingBlock);
+            media->videoNetBuffer.SetDurationTrimEnabled(!bufferingBlock);
 
             Logger::Info()
                 << "[Player] Buffer gate : "
@@ -1676,7 +1676,7 @@ void Player::RequestSeek(
         std::max(
             0.0,
             std::min(
-                duration,
+                media->duration,
                 seconds));
 
     Logger::Info()
@@ -1941,7 +1941,7 @@ double Player::GetCurrentTime() const
 
 double Player::GetDuration() const
 {
-    return duration;
+    return media->duration;
 }
 
 double Player::GetProgress() const
@@ -1988,13 +1988,13 @@ std::string Player::GetTimeString() const
 std::string Player::GetDurationString() const
 {
     int hour =
-        static_cast<int>(duration) / 3600;
+        static_cast<int>(media->duration) / 3600;
 
     int minute =
-        (static_cast<int>(duration) % 3600) / 60;
+        (static_cast<int>(media->duration) % 3600) / 60;
 
     int second =
-        static_cast<int>(duration) % 60;
+        static_cast<int>(media->duration) % 60;
 
     char buffer[32];
 
@@ -2013,10 +2013,10 @@ void Player::SetCurrentTime(
 {
     currentTime = time;
 
-    if (duration > 0.0)
+    if (media->duration > 0.0)
     {
         progress =
-            currentTime / duration;
+            currentTime / media->duration;
     }
     else
     {
@@ -2159,7 +2159,7 @@ void Player::UpdateStatistics()
     statistics->UpdateBuffers(
         GetVideoQueueSize(),           // 视频包缓冲（直播=NetworkBuffer�?
         GetAudioQueueSize(),           // 音频包缓�?
-        videoFrameQueue.Size(),            // 视频帧缓�?
+        media->videoFrameQueue.Size(),            // 视频帧缓�?
         media->audioDevice ?
             media->audioDevice->GetQueuedSize() : 0,   // 音频缓冲（字节）
         48000,                             // 音频采样�?
@@ -2168,8 +2168,8 @@ void Player::UpdateStatistics()
     // 视频帧缓冲时长（毫秒）：帧数 * 帧间�?
     statistics->SetVideoBufferMs(
         static_cast<int>(
-            videoFrameQueue.Size() *
-            videoFrameDuration *
+            media->videoFrameQueue.Size() *
+            media->videoFrameDuration *
             1000.0));
 
     // ---------- 网络缓冲监控�?.2 / 7.3�?----------
@@ -2197,17 +2197,17 @@ void Player::UpdateStatistics()
     // v2 Metrics: audio buffer ms at function scope
     double audioMs = 0.0;
 
-    if (useNetBuffer)
+    if (media->useNetBuffer)
     {
         videoMs =
             static_cast<double>(
-                videoNetBuffer.GetDurationMs());
+                media->videoNetBuffer.GetDurationMs());
     }
     else
     {
         videoMs =
             GetVideoQueueSize() *
-            videoFrameDuration *
+            media->videoFrameDuration *
             1000.0;
     }
 
@@ -2228,11 +2228,11 @@ void Player::UpdateStatistics()
             media->audioDevice->GetAudioClock();
 
         double backPtsSec =
-            useNetBuffer ?
-            videoNetBuffer.GetBackPts() :
+            media->useNetBuffer ?
+            media->videoNetBuffer.GetBackPts() :
             -1.0;
 
-        if (useNetBuffer && backPtsSec > 0.0 && aclkSec > 0.0)
+        if (media->useNetBuffer && backPtsSec > 0.0 && aclkSec > 0.0)
         {
             // v2: live audio buffer depth = how far the audio clock
             // lags the push head (audio delayed by same backlog as
@@ -2297,7 +2297,7 @@ void Player::UpdateStatistics()
             lastMetricsTick = nowTick;
 
             const int netMs =
-                videoNetBuffer.GetDurationMs();
+                media->videoNetBuffer.GetDurationMs();
 
             const int avSyncMs =
                 syncController ?
@@ -2360,17 +2360,17 @@ void Player::UpdateStatistics()
 bool Player::PushVideoPacket(
     PacketPtr&& pkt)
 {
-    if (useNetBuffer)
+    if (media->useNetBuffer)
     {
         bool ok =
-            videoNetBuffer.Push(
+            media->videoNetBuffer.Push(
                 std::move(pkt));
 
         // 8.4：同步丢包统计（GOP 段丢包可能一次丢多个�?
         if (networkStatistics)
         {
             int64_t dropped =
-                videoNetBuffer.GetDroppedCount();
+                media->videoNetBuffer.GetDroppedCount();
 
             int64_t delta =
                 dropped - lastVideoDropped;
@@ -2387,7 +2387,7 @@ bool Player::PushVideoPacket(
         return ok;
     }
 
-    return videoPacketQueue.Push(
+    return media->videoPacketQueue.Push(
         std::move(pkt),
         MAX_VIDEO_PACKETS);
 }
@@ -2399,7 +2399,7 @@ bool Player::PushAudioPacket(
     // Push 不阻塞，积压超过 live_max_queue_ms 丢旧包；
     // 点播时保持满阻塞背压。两种模式共用一个队列�?
     bool ok =
-        audioPacketQueue.Push(
+        media->audioPacketQueue.Push(
             std::move(pkt),
             MAX_AUDIO_PACKETS);
 
@@ -2407,7 +2407,7 @@ bool Player::PushAudioPacket(
     if (networkStatistics)
     {
         int64_t dropped =
-            audioPacketQueue.GetDroppedCount();
+            media->audioPacketQueue.GetDroppedCount();
 
         int64_t delta =
             dropped - lastAudioDropped;
@@ -2427,56 +2427,56 @@ bool Player::PushAudioPacket(
 PacketPtr Player::PopVideoPacket(
     int timeoutMs)
 {
-    if (useNetBuffer)
+    if (media->useNetBuffer)
     {
-        return videoNetBuffer.Pop(timeoutMs);
+        return media->videoNetBuffer.Pop(timeoutMs);
     }
 
-    return videoPacketQueue.Pop(timeoutMs);
+    return media->videoPacketQueue.Pop(timeoutMs);
 }
 
 PacketPtr Player::PopAudioPacket(
     int timeoutMs)
 {
     // 8.5：直�?点播统一�?PacketQueue（LiveMode 内部处理丢旧包）
-    return audioPacketQueue.Pop(timeoutMs);
+    return media->audioPacketQueue.Pop(timeoutMs);
 }
 
 bool Player::IsVideoQueueInterrupted() const
 {
-    if (useNetBuffer)
+    if (media->useNetBuffer)
     {
-        return videoNetBuffer.IsInterrupted();
+        return media->videoNetBuffer.IsInterrupted();
     }
 
-    return videoPacketQueue.IsInterrupted();
+    return media->videoPacketQueue.IsInterrupted();
 }
 
 bool Player::IsAudioQueueInterrupted() const
 {
-    return audioPacketQueue.IsInterrupted();
+    return media->audioPacketQueue.IsInterrupted();
 }
 
 int Player::GetVideoQueueSize() const
 {
-    if (useNetBuffer)
+    if (media->useNetBuffer)
     {
-        return videoNetBuffer.Size();
+        return media->videoNetBuffer.Size();
     }
 
-    return videoPacketQueue.Size();
+    return media->videoPacketQueue.Size();
 }
 
 int Player::GetAudioQueueSize() const
 {
-    return audioPacketQueue.Size();
+    return media->audioPacketQueue.Size();
 }
 
 int Player::GetVideoQueueCapacity() const
 {
-    if (useNetBuffer)
+    if (media->useNetBuffer)
     {
-        return videoNetBuffer.GetMaxSize();
+        return media->videoNetBuffer.GetMaxSize();
     }
 
     return MAX_VIDEO_PACKETS;
@@ -2524,8 +2524,8 @@ bool Player::EnsureOutEncoders()
 
         int fps =
             static_cast<int>(
-                videoFrameDuration > 0 ?
-                1.0 / videoFrameDuration + 0.5 :
+                media->videoFrameDuration > 0 ?
+                1.0 / media->videoFrameDuration + 0.5 :
                 25.0);
 
         if (fps <= 0)
@@ -3530,14 +3530,14 @@ void Player::StopThreads()
     quit.store(true);
 
     // 打断所有阻塞调用，唤醒线程退�?
-    videoPacketQueue.Interrupt();
+    media->videoPacketQueue.Interrupt();
 
-    audioPacketQueue.Interrupt();
+    media->audioPacketQueue.Interrupt();
 
-    videoFrameQueue.Interrupt();
+    media->videoFrameQueue.Interrupt();
 
     // 直播队列（NetworkBuffer）同样打�?
-    videoNetBuffer.Interrupt();
+    media->videoNetBuffer.Interrupt();
 
     // 打断网络流的阻塞读取（av_read_frame 会立即返回）
     // 否则 RTSP/HTTP 断线或超时时 join 会卡�?
@@ -3629,7 +3629,7 @@ void Player::DemuxLoop()
 
             // ---------- 断网重连�?.3）：直播流报�?EOF 触发 ----------
 
-            if (useNetBuffer &&
+            if (media->useNetBuffer &&
                 media->demuxer &&
                 media->demuxer->IsNetwork())
             {
@@ -3864,7 +3864,7 @@ void Player::TryInitHardwareDecoder(
 
     // 8.5：直播解码级低延迟（硬件 + 软解回退两处 avcodec_open2�?
     media->hwDecoder->SetLowDelay(
-        useNetBuffer);
+        media->useNetBuffer);
 
     if (!media->hwDecoder->Init(
         cudaContext.get(),
@@ -3914,7 +3914,7 @@ void Player::VideoDecodeLoop()
 
         // 8.4：PacketPtr 返回所有权，无需手动释放
         // v2: buffer gate - hold video consumption during prebuffer/rebuffer/stall
-        while (useNetBuffer &&
+        while (media->useNetBuffer &&
             bufferController &&
             bufferController->IsConsumingBlocked())
         {
@@ -3987,7 +3987,7 @@ void Player::VideoDecodeLoop()
                         FeedOutputVideo(f.get());
 
                         // 失败�?f 作用域结束自动释�?
-                        videoFrameQueue.Push(
+                        media->videoFrameQueue.Push(
                             std::move(f),
                             MAX_VIDEO_FRAMES);
                     }
@@ -4072,14 +4072,14 @@ void Player::VideoDecodeLoop()
             // 输出链（7.4�?.6）：录制 / 推流 / HLS 共享编码�?
             FeedOutputVideo(f.get());
 
-            if (!videoFrameQueue.Push(
+            if (!media->videoFrameQueue.Push(
                 std::move(f),
                 MAX_VIDEO_FRAMES))
             {
                 // 入队被打断（Seek/退出）：f 自动释放
 
                 // 说明正在 Seek：flush 后等待恢�?
-                if (videoFrameQueue.IsInterrupted())
+                if (media->videoFrameQueue.IsInterrupted())
                 {
                     FlushVideoDecoder();
 
@@ -4395,25 +4395,25 @@ void Player::ReleaseMedia()
 
     // ---------- 队列清空 + 复位 ----------
 
-    videoPacketQueue.Clear();
+    media->videoPacketQueue.Clear();
 
-    audioPacketQueue.Clear();
+    media->audioPacketQueue.Clear();
 
-    videoFrameQueue.Clear();
+    media->videoFrameQueue.Clear();
 
-    videoPacketQueue.ResetInterrupt();
+    media->videoPacketQueue.ResetInterrupt();
 
-    audioPacketQueue.ResetInterrupt();
+    media->audioPacketQueue.ResetInterrupt();
 
-    videoFrameQueue.ResetInterrupt();
+    media->videoFrameQueue.ResetInterrupt();
 
     // 直播队列（NetworkBuffer）同样清�?+ 复位
-    videoNetBuffer.Clear();
+    media->videoNetBuffer.Clear();
 
-    videoNetBuffer.ResetInterrupt();
+    media->videoNetBuffer.ResetInterrupt();
 
     // 8.5：音频队�?LiveMode 复位（直�?-> 点播切换时清除状态）
-    audioPacketQueue.SetLiveMode(
+    media->audioPacketQueue.SetLiveMode(
         false,
         1,
         90000,
@@ -4428,15 +4428,15 @@ void Player::ReleaseMedia()
 
     // ---------- 状态复�?----------
 
-    duration = 0.0;
+    media->duration = 0.0;
 
     currentTime = 0.0;
 
     progress = 0.0;
 
-    hasAudioStream = false;
+    media->hasAudioStream = false;
 
-    videoFrameDuration = 1.0 / 25.0;
+    media->videoFrameDuration = 1.0 / 25.0;
 
     seekPending = false;
 
@@ -4647,6 +4647,6 @@ double Player::GetFramePts(
 
 bool Player::HasAudio() const
 {
-    return hasAudioStream &&
+    return media->hasAudioStream &&
         media->audioDevice != nullptr;
 }

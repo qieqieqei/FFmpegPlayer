@@ -539,19 +539,6 @@ private:
 
     std::atomic<int> reconnectAttempts{ 0 };         // 重连尝试计数
 
-    // ---------- 成员：队列（Player 直接持有） ----------
-
-    PacketQueue videoPacketQueue;   // 视频包队列（点播：满阻塞背压）
-
-    PacketQueue audioPacketQueue;   // 音频包队列（点播：满阻塞背压；
-                                    // 8.5 直播：LiveMode 追最新，丢旧包）
-
-    NetworkBuffer videoNetBuffer;   // 视频包队列（直播：满丢最旧 + 时长上限，低延迟 7.3/8.5）
-
-    bool useNetBuffer = false;      // 直播流：Demux<->Decode 走 NetworkBuffer
-
-    FrameQueue videoFrameQueue;     // 视频帧队列（Video -> Render）
-
     // ---------- 成员：线程 ----------
 
     std::thread demuxThread;        // Demux 线程
@@ -606,8 +593,6 @@ private:
 
     double currentTime = 0.0;
 
-    double duration = 0.0;
-
     double progress = 0.0;
 
     bool fullscreen = false;
@@ -644,10 +629,5 @@ private:
 
     // 上一帧副本（供截图 / EOF 显示）
     AVFramePtr lastFrame;
-
-    // 视频帧时长（无音频时按它匀速播放）
-    double videoFrameDuration = 1.0 / 25.0;
-
-    bool hasAudioStream = false;
 
 };

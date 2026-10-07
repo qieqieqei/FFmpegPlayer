@@ -20,9 +20,10 @@
   `audioDecoder`、`audioResampler`、`speedController`、`audioDevice`
   - 注（规则3，以实证修正）：`syncController`/`seekController` 其实在 `Player::Init()` 创建、`Player::Close()` 重置，
     属**会话级**，**不**入 MediaContext；`audioDevice` 在 `ReleaseMedia()` 被 reset，属随媒体。
-- 队列：`videoPacketQueue`、`audioPacketQueue`、`videoNetBuffer`、`videoFrameQueue`
-- 媒体派生状态：`hasAudioStream`、`duration`、`videoFrameDuration`、`currentMediaPath`、
-  `lastVideoDropped/lastAudioDropped`
+- 队列：`videoPacketQueue`、`audioPacketQueue`、`videoNetBuffer`、`useNetBuffer`、`videoFrameQueue`（值成员，地址稳定；MediaContext 只建一次）
+- 媒体派生状态：`hasAudioStream`、`duration`、`videoFrameDuration`
+  - 注（规则3，以实证修正）：`currentMediaPath`、`lastVideoDropped`/`lastAudioDropped` **未**在 `ReleaseMedia()` 复位（前者为断网重连目标，后者为统计增量基准）→ 属会话级，**留 Player**。
+  - `useNetBuffer` 仅在 `OpenMedia()` 赋值一次、与 `videoNetBuffer` 同生死 → 随队列一并迁入。
 
 ### PlaybackSession（会话级）
 - 三线程 `demuxThread/videoThread/audioThread` + 入口 `DemuxLoop/VideoDecodeLoop/AudioDecodeLoop`
@@ -65,5 +66,8 @@
 
 - **4.1 完成**（commit `e2afee2`）：建 `core/MediaContext.h`；搬 `demuxer/videoDecoder/hwDecoder/hwTransferFrame`（88 处引用改写）；
   Player 增 `std::unique_ptr<MediaContext> media`（ctor `make_unique`）。Debug/Release 0 error；两个样例 `--record` 自然 EOF，exit 0 且 FLV 合法。
-- **4.2 完成**（commit 见下）：搬 `audioDecoder/audioResampler/speedController/audioDevice`（90 处改写）；
+- **4.2 完成**（commit `0d94ae8`）：搬 `audioDecoder/audioResampler/speedController/audioDevice`（90 处改写）；
   `syncController`/`seekController` 实证为会话级，保留在 Player。Debug/Release 0 error；两个样例 `--record` exit 0 且 FLV 合法。
+- **4.3 完成**（commit 见下）：搬队列 `videoPacketQueue/audioPacketQueue/videoNetBuffer/useNetBuffer/videoFrameQueue` + 派生状态 `duration/videoFrameDuration/hasAudioStream`（95 + 10 处改写）；
+  `currentMediaPath`/`lastVideoDropped`/`lastAudioDropped` 实证未在 ReleaseMedia 复位，保留在 Player。
+  警示：`duration` 重命名必须排除 `.`/`->` 前缀（否则会误伤 `pkt->duration`）。Debug/Release 0 error；三个样例 `--record`（12.8/22.7/141.8s）exit 0 且 FLV 合法。

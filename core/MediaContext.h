@@ -1,16 +1,17 @@
 #pragma once
 
 // ============================================================
-// MediaContext - 一次媒体会话的管线对象集合（纯聚合，无逻辑）
+// MediaContext - 一次媒体会话的管线对象集合 + 媒体派生状态（纯聚合，无逻辑）
 //
 // 阶段4：把 Player（上帝对象）中"随媒体生死"的成员拆出来。
 // 随 OpenMedia / ReleaseMedia 重建；由 Player 持有（unique_ptr<MediaContext>）。
 //
-// 分组依据（实证，规则3）：以 ReleaseMedia() 的重置边界为准——
-//   在该函数里被 reset() 的对象 => 属于 MediaContext；
-//   在 Init() 创建、Close() 重置的对象（syncController/seekController）=> 留在 Player。
+// 分组依据（实证，规则3）：以 ReleaseMedia() 的重置/清空边界为准——
+//   在 ReleaseMedia() 里被 reset()/Clear()/复位的对象 => 属于 MediaContext；
+//   在 Init() 创建、Close() 重置的对象（syncController/seekController）=> 留在 Player；
+//   未在该边界复位的会话级状态（currentMediaPath / last*Dropped）=> 留在 Player。
 //
-// 本结构只承载对象，不承担行为——行为仍留在 Player / 后续 PlaybackSession。
+// 本结构只承载数据，不承担行为——行为仍留在 Player / 后续 PlaybackSession。
 // ============================================================
 
 #include <memory>
@@ -22,6 +23,9 @@
 #include "pipeline/audio/AudioResampler.h"
 #include "pipeline/audio/SpeedController.h"
 #include "output/audio/AudioDevice.h"
+#include "pipeline/queue/PacketQueue.h"
+#include "pipeline/queue/FrameQueue.h"
+#include "streaming/NetworkBuffer.h"
 #include "infra/FFmpegPtr.h"
 
 struct MediaContext
@@ -53,4 +57,32 @@ struct MediaContext
 
     // SDL 音频设备（回调线程 + Audio 线程）
     std::unique_ptr<AudioDevice> audioDevice;
+
+    // ---------- 队列（地址稳定：MediaContext 本身只建一次） ----------
+
+    // 视频包队列（点播：满阻塞背压）
+    PacketQueue videoPacketQueue;
+
+    // 音频包队列（点播：满阻塞背压；8.5 直播：LiveMode 追最新，丢旧包）
+    PacketQueue audioPacketQueue;
+
+    // 视频包队列（直播：满丢最旧 + 时长上限，低延迟 7.3/8.5）
+    NetworkBuffer videoNetBuffer;
+
+    // 直播流：Demux<->Decode 走 NetworkBuffer
+    bool useNetBuffer = false;
+
+    // 视频帧队列（Video -> Render）
+    FrameQueue videoFrameQueue;
+
+    // ---------- 媒体派生状态 ----------
+
+    // 媒体总时长（秒）
+    double duration = 0.0;
+
+    // 视频帧时长（无音频时按它匀速播放）
+    double videoFrameDuration = 1.0 / 25.0;
+
+    // 是否存在可用音频流
+    bool hasAudioStream = false;
 };
