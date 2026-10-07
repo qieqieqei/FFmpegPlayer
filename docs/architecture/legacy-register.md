@@ -121,3 +121,27 @@
 1. **"无明显调用者" ≠ "允许删除"。** 一切删除推迟到阶段 6，且必须同时满足：源码引用为空 **且** 不参与构建 **且** 无运行路径（或已确认迁移完毕）。
 2. 本清单为**只读登记**；新增发现应**追加**条目，不覆盖历史。
 3. 每个条目在阶段 6 处置后，应回填"最终处置"与对应 commit。
+
+---
+
+## 阶段 6 处置回填（2026-10-08，commit \`b87a6af\`）
+
+**三重确认实测**（脚本 `%TEMP%` 侧 `.tmp_phase6_legacy_audit2.js`，扫描 105 个非 legacy 源文件）：
+
+- **判据 B（源码引用）**：**无任何 `#include "legacy/…"`，亦无按 basename 命中的 legacy 头** → 9 个 legacy 头**外部引用全空**。
+- **判据 A（构建依赖）**：`FFmpeg_text_claw.vcxproj` 中仍登记 **5 项**（`AudioFilter`/`FilterGraph`/`VideoFilter`/`RTSPClient`/`Clock` 各 .h+.cpp，共 10 条）；其余 4 项（`AudioMixer`/`Decoder`/`Input`/`Screenshot`）**未登记**。
+- **判据 C（运行路径）**：9 项均非入口、无调用者，不参与运行链路（`Decoder` 已不在编，不会引入第二套解码线程）。
+
+**最终处置**：
+
+| 条目 | 处置 | commit |
+|---|---|---|
+| LEGACY-001 `Input.*` | 阶段 3 已移入 `legacy/`、不在编；确认零引用 → **保留归档（不删）** | `b87a6af` |
+| LEGACY-002 `Decoder.*` | 不在编、零引用 → **保留归档** | `b87a6af` |
+| LEGACY-003 重复模块（`Screenshot`/`AudioMixer`/`Input`/`Decoder` 旧实现） | 旧实现均零引用 → **保留归档** | `b87a6af` |
+| LEGACY-005 无引用文件（`Clock` / `Filter` 三件套 / `RTSPClient`） | **从 `vcxproj` + `.vcxproj.filters` 摘除构建条目**（归档，不删源码） | `b87a6af` |
+| LEGACY-006 旧接口 | 随上条目一并归档 | `b87a6af` |
+
+> **说明**：按本文件规则 1，「源码引用为空 **且** 不参与构建 **且** 无运行路径」方可删除。本次**仅摘除构建条目**（即「归档」处置），
+> **未删除任何源码文件**——`legacy/` 9 组文件全部原样保留备查。若日后确认长期无用，可另立**独立删除提交**（届时源码引用/构建/运行三判据均已长期为空）。
+> **验证**：摘除后 Debug|x64 与 Release|x64（Rebuild）均 **0 error**；三样例 `--record` FLV 字节 **7280913 / 9666764 / 59694920** 逐位一致，0 ERROR/WARN。
