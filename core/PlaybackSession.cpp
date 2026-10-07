@@ -1,6 +1,7 @@
 #include "core/PlaybackSession.h"
 
 #include "core/Player.h"
+#include "features/playlist/PlaylistManager.h"
 #include "output/video/Renderer.h"
 #include "infra/ErrorHandler.h"
 #include "infra/Logger.h"
@@ -2564,4 +2565,192 @@ void PlaybackSession::ClearSeekHandled()
     {
         owner.seekController->ClearHandled();
     }
+}
+
+void PlaybackSession::AddToPlaylist(
+    const std::string& path)
+{
+    // 播放列表可能�?Init 之前就被填充（main �?Add �?Init），
+    // 这里惰性创建，避免依赖 Init 的调用顺�?
+    if (!owner.playlistManager)
+    {
+        owner.playlistManager =
+            std::make_unique<PlaylistManager>();
+    }
+
+    owner.playlistManager->AddMedia(path);
+}
+
+void PlaybackSession::ExpandPlaylistWithSiblings()
+{
+    // 8.14 loop: single-file playlist -> scan same folder
+    // for sibling videos so EOF auto-advance can cycle
+    if (!owner.playlistManager ||
+        owner.playlistManager->Count() != 1)
+    {
+        return;
+    }
+
+    const std::string& current =
+        owner.playlistManager->GetCurrent();
+
+    // network streams: never scan folders
+    if (current.rfind("http://", 0) == 0 ||
+        current.rfind("https://", 0) == 0 ||
+        current.rfind("rtsp://", 0) == 0 ||
+        current.rfind("rtmp://", 0) == 0)
+    {
+        return;
+    }
+
+    std::error_code ec;
+
+    std::filesystem::path dir =
+        std::filesystem::path(current)
+            .parent_path();
+
+    if (dir.empty())
+    {
+        return;
+    }
+
+    static const char* kVideoExts[] = {
+        ".mp4", ".mkv", ".avi", ".mov", ".flv", ".ts",
+        ".wmv", ".webm", ".m4v", ".mpg", ".mpeg",
+        ".rmvb", ".3gp"
+    };
+
+    std::vector<std::string> siblings;
+
+    for (const auto& entry :
+        std::filesystem::directory_iterator(
+            dir, ec))
+    {
+        if (ec)
+        {
+            break;
+        }
+
+        if (!entry.is_regular_file(ec))
+        {
+            continue;
+        }
+
+        std::string ext =
+            entry.path().extension().string();
+
+        bool isVideo = false;
+
+        for (const char* e : kVideoExts)
+        {
+            if (_stricmp(ext.c_str(), e) == 0)
+            {
+                isVideo = true;
+
+                break;
+            }
+        }
+
+        if (!isVideo)
+        {
+            continue;
+        }
+
+        std::string full =
+            entry.path().string();
+
+        if (full == current)
+        {
+            continue;  // already in list
+        }
+
+        siblings.push_back(full);
+    }
+
+    if (siblings.empty())
+    {
+        return;  // keep single file (EOF replays itself)
+    }
+
+    std::sort(
+        siblings.begin(),
+        siblings.end());
+
+    for (const std::string& s : siblings)
+    {
+        owner.playlistManager->AddMedia(s);
+    }
+
+    Logger::Info()
+        << "[Player] Expand playlist : "
+        << owner.playlistManager->Count()
+        << " items"
+        << std::endl;
+}
+
+bool PlaybackSession::PlayPrevious()
+{
+    if (!owner.playlistManager ||
+        !owner.playlistManager->Previous())
+    {
+        return false;
+    }
+
+    // 只登记请求，Run 循环里执行切换（避免线程交叉�?
+    switchPath =
+        owner.playlistManager->GetCurrent();
+
+    switchRequested = true;
+
+    Logger::Info()
+        << "[Player] Play previous : "
+        << switchPath
+        << std::endl;
+
+    return true;
+}
+
+bool PlaybackSession::PlayNext()
+{
+    if (!owner.playlistManager ||
+        !owner.playlistManager->Next())
+    {
+        return false;
+    }
+
+    // 只登记请求，Run 循环里执行切换（避免线程交叉�?
+    switchPath =
+        owner.playlistManager->GetCurrent();
+
+    switchRequested = true;
+
+    Logger::Info()
+        << "[Player] Play next : "
+        << switchPath
+        << std::endl;
+
+    return true;
+}
+
+size_t PlaybackSession::GetPlaylistIndex() const
+{
+    return owner.playlistManager ?
+        owner.playlistManager->GetIndex() :
+        0;
+}
+
+size_t PlaybackSession::GetPlaylistCount() const
+{
+    return owner.playlistManager ?
+        owner.playlistManager->Count() :
+        0;
+}
+
+const std::string& PlaybackSession::GetCurrentPath() const
+{
+    static const std::string empty;
+
+    return owner.playlistManager ?
+        owner.playlistManager->GetCurrent() :
+        empty;
 }

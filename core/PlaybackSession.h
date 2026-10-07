@@ -85,6 +85,23 @@ public:
 
     void ClearSeekHandled();
 
+    // playlist navigation (phase 6.4, moved from Player; Player keeps
+    // thin facade forwarders so app/Event/main call sites are unchanged)
+    void AddToPlaylist(
+        const std::string& path);
+
+    void ExpandPlaylistWithSiblings();
+
+    bool PlayPrevious();
+
+    bool PlayNext();
+
+    size_t GetPlaylistIndex() const;
+
+    size_t GetPlaylistCount() const;
+
+    const std::string& GetCurrentPath() const;
+
 private:
 
     void DemuxLoop();

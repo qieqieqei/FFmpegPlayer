@@ -418,189 +418,37 @@ void Player::Close()
 void Player::AddToPlaylist(
     const std::string& path)
 {
-    // 播放列表可能�?Init 之前就被填充（main �?Add �?Init），
-    // 这里惰性创建，避免依赖 Init 的调用顺�?
-    if (!playlistManager)
-    {
-        playlistManager =
-            std::make_unique<PlaylistManager>();
-    }
-
-    playlistManager->AddMedia(path);
+    session->AddToPlaylist(path);
 }
 
 void Player::ExpandPlaylistWithSiblings()
 {
-    // 8.14 loop: single-file playlist -> scan same folder
-    // for sibling videos so EOF auto-advance can cycle
-    if (!playlistManager ||
-        playlistManager->Count() != 1)
-    {
-        return;
-    }
-
-    const std::string& current =
-        playlistManager->GetCurrent();
-
-    // network streams: never scan folders
-    if (current.rfind("http://", 0) == 0 ||
-        current.rfind("https://", 0) == 0 ||
-        current.rfind("rtsp://", 0) == 0 ||
-        current.rfind("rtmp://", 0) == 0)
-    {
-        return;
-    }
-
-    std::error_code ec;
-
-    std::filesystem::path dir =
-        std::filesystem::path(current)
-            .parent_path();
-
-    if (dir.empty())
-    {
-        return;
-    }
-
-    static const char* kVideoExts[] = {
-        ".mp4", ".mkv", ".avi", ".mov", ".flv", ".ts",
-        ".wmv", ".webm", ".m4v", ".mpg", ".mpeg",
-        ".rmvb", ".3gp"
-    };
-
-    std::vector<std::string> siblings;
-
-    for (const auto& entry :
-        std::filesystem::directory_iterator(
-            dir, ec))
-    {
-        if (ec)
-        {
-            break;
-        }
-
-        if (!entry.is_regular_file(ec))
-        {
-            continue;
-        }
-
-        std::string ext =
-            entry.path().extension().string();
-
-        bool isVideo = false;
-
-        for (const char* e : kVideoExts)
-        {
-            if (_stricmp(ext.c_str(), e) == 0)
-            {
-                isVideo = true;
-
-                break;
-            }
-        }
-
-        if (!isVideo)
-        {
-            continue;
-        }
-
-        std::string full =
-            entry.path().string();
-
-        if (full == current)
-        {
-            continue;  // already in list
-        }
-
-        siblings.push_back(full);
-    }
-
-    if (siblings.empty())
-    {
-        return;  // keep single file (EOF replays itself)
-    }
-
-    std::sort(
-        siblings.begin(),
-        siblings.end());
-
-    for (const std::string& s : siblings)
-    {
-        playlistManager->AddMedia(s);
-    }
-
-    Logger::Info()
-        << "[Player] Expand playlist : "
-        << playlistManager->Count()
-        << " items"
-        << std::endl;
+    session->ExpandPlaylistWithSiblings();
 }
 
 bool Player::PlayPrevious()
 {
-    if (!playlistManager ||
-        !playlistManager->Previous())
-    {
-        return false;
-    }
-
-    // 只登记请求，Run 循环里执行切换（避免线程交叉�?
-    session->switchPath =
-        playlistManager->GetCurrent();
-
-    session->switchRequested = true;
-
-    Logger::Info()
-        << "[Player] Play previous : "
-        << session->switchPath
-        << std::endl;
-
-    return true;
+    return session->PlayPrevious();
 }
 
 bool Player::PlayNext()
 {
-    if (!playlistManager ||
-        !playlistManager->Next())
-    {
-        return false;
-    }
-
-    // 只登记请求，Run 循环里执行切换（避免线程交叉�?
-    session->switchPath =
-        playlistManager->GetCurrent();
-
-    session->switchRequested = true;
-
-    Logger::Info()
-        << "[Player] Play next : "
-        << session->switchPath
-        << std::endl;
-
-    return true;
+    return session->PlayNext();
 }
 
 size_t Player::GetPlaylistIndex() const
 {
-    return playlistManager ?
-        playlistManager->GetIndex() :
-        0;
+    return session->GetPlaylistIndex();
 }
 
 size_t Player::GetPlaylistCount() const
 {
-    return playlistManager ?
-        playlistManager->Count() :
-        0;
+    return session->GetPlaylistCount();
 }
 
 const std::string& Player::GetCurrentPath() const
 {
-    static const std::string empty;
-
-    return playlistManager ?
-        playlistManager->GetCurrent() :
-        empty;
+    return session->GetCurrentPath();
 }
 
 // ============================================================
