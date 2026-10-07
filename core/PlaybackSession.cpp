@@ -488,6 +488,61 @@ bool PlaybackSession::OpenMedia(
 
     autoAdvancing = false;
 
+    // phase 7.1: publish source info to the output chain
+    if (owner.output)
+    {
+        OutputPipeline::SourceInfo info;
+
+        info.hasVideo = (media.videoDecoder != nullptr);
+
+        if (media.videoDecoder)
+        {
+            AVCodecContext* vctx =
+                media.videoDecoder->GetContext();
+
+            if (vctx)
+            {
+                info.width = vctx->width;
+                info.height = vctx->height;
+            }
+        }
+
+        info.fps =
+            media.videoFrameDuration > 0.0 ?
+            static_cast<int>(
+                1.0 / media.videoFrameDuration + 0.5) :
+            25;
+
+        if (info.fps <= 0)
+        {
+            info.fps = 25;
+        }
+
+        if (media.demuxer &&
+            media.demuxer->GetAudioStream())
+        {
+            AVCodecParameters* ap =
+                media.demuxer->GetAudioStream()->codecpar;
+
+            info.hasAudio = true;
+
+            if (ap)
+            {
+                info.sampleRate =
+                    ap->sample_rate > 0 ?
+                    ap->sample_rate :
+                    48000;
+
+                info.channels =
+                    ap->ch_layout.nb_channels > 0 ?
+                    ap->ch_layout.nb_channels :
+                    2;
+            }
+        }
+
+        owner.output->SetSourceInfo(info);
+    }
+
     return true;
 }
 // ============================================================
@@ -979,7 +1034,7 @@ void PlaybackSession::VideoDecodeLoop()
                         }
 
                         // 输出链（EOF 尾帧同样送编码）
-                        owner.FeedOutputVideo(f.get());
+                        owner.output->FeedOutputVideo(f.get());
 
                         // 失败�?f 作用域结束自动释�?
                         media.videoFrameQueue.Push(
@@ -1065,7 +1120,7 @@ void PlaybackSession::VideoDecodeLoop()
             }
 
             // 输出链（7.4�?.6）：录制 / 推流 / HLS 共享编码�?
-            owner.FeedOutputVideo(f.get());
+            owner.output->FeedOutputVideo(f.get());
 
             if (!media.videoFrameQueue.Push(
                 std::move(f),
@@ -1296,7 +1351,7 @@ bool PlaybackSession::SwitchMedia(
 void PlaybackSession::ReleaseMedia()
 {
     // 输出链（7.4�?.6）：停止录制 / 推流 / HLS 并释�?
-    owner.StopAllOutputs();
+    owner.output->StopAllOutputs();
 
     // ---------- 音频链路 ----------
 
@@ -1459,7 +1514,7 @@ void PlaybackSession::ProcessAudioFrame(
 
     // 输出链（7.4�?.6）：录制 / 推流 / HLS 共享编码�?
     // （内�?swr 自动转为编码器所需格式，pts 自管理）
-    owner.FeedOutputAudio(frame);
+    owner.output->FeedOutputAudio(frame);
 
     // 重采样为 S16 / 48000Hz / 双声�?
     uint8_t pcmBuffer[192000];

@@ -68,6 +68,7 @@
 #include "recording/FLVMuxer.h"
 #include "recording/HLSMuxer.h"
 #include "recording/RTMPPublisher.h"
+#include "recording/OutputPipeline.h"
 #include "output/osd/FontManager.h"
 #include "output/osd/OSDManager.h"
 #include "infra/DecodeResult.h"
@@ -320,41 +321,6 @@ private:
     // 取帧时间戳（秒）
     double GetFramePts(
         AVFrame* frame) const;
-
-    // ---------- 输出链（7.4–7.6） ----------
-
-    // 确保视频/音频编码器存在（首路输出时按 stream.json 创建）
-    bool EnsureOutEncoders();
-
-    // 视频帧送入输出链（Video 线程调用，锁内）
-    void FeedOutputVideo(
-        AVFrame* frame);
-
-    // 音频帧送入输出链（Audio 线程调用，锁内）
-    void FeedOutputAudio(
-        AVFrame* frame);
-
-    // 视频帧转 YUV420P（编码器输入格式，惰性创建 sws）
-    AVFrame* ToYuv420p(
-        AVFrame* frame);
-
-    // 分发视频编码包到所有活跃输出
-    void DispatchVideoPacket(
-        AVPacket* pkt);
-
-    // 分发音频编码包到所有活跃输出
-    void DispatchAudioPacket(
-        AVPacket* pkt);
-
-    // 冲刷编码器尾帧（停止某路输出时，尾帧写给剩余活跃输出）
-    void FlushOutEncoders();
-
-    // 停止所有输出（录制 + 推流 + HLS）
-    void StopAllOutputs();
-
-    // 释放输出链资源（编码器 / 转换器）
-    void ReleaseOutEncoders();
-
     // 更新当前播放时间 / 进度
     void SetCurrentTime(
         double time);
@@ -403,38 +369,8 @@ private:
     // 配置管理器（7.11）
     std::unique_ptr<ConfigManager> configManager;
 
-    // ---------- 成员：输出链（7.4–7.6） ----------
-
-    std::mutex outMutex;             // 保护输出链生命周期（主线程 vs 解码线程）
-
-    std::unique_ptr<VideoEncoder> outVideoEncoder;   // 共享视频编码器
-
-    std::unique_ptr<AudioEncoder> outAudioEncoder;   // 共享音频编码器
-
-    std::unique_ptr<FLVMuxer> recordMuxer;           // 录制（.flv 文件）
-
-    std::unique_ptr<RTMPPublisher> rtmpPublisher;    // 推流（rtmp://）
-
-    std::unique_ptr<HLSMuxer> hlsMuxer;              // HLS 切片
-
-    SwsContextPtr outSws;                            // 视频帧 -> YUV420P
-
-    AVFramePtr outYuvFrame;                          // 转换输出帧（内部复用）
-
-    int64_t outVideoPts = 0;                   // 输出视频 pts（自管理）
-
-    int64_t outAudioPts = 0;                   // 输出音频 pts（自管理）
-
-    int64_t outVideoPktIdx = 0;                // 输出视频包序号（重建 pts）
-
-    int64_t outAudioPktIdx = 0;                // 输出音频包序号（重建 pts）
-
-    bool recording = false;                    // 录制中
-
-    bool pushing = false;                      // 推流中
-
-    bool hlsActive = false;                    // HLS 输出中
-
+    // output chain (phase 7.1 extraction)
+    std::unique_ptr<OutputPipeline> output;
     // 字幕管理器
     std::unique_ptr<SubtitleManager> subtitleManager;
 

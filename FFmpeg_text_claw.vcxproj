@@ -171,6 +171,7 @@
     <ClCompile Include="streaming\NetworkBuffer.cpp" />
     <ClCompile Include="streaming\NetworkStatistics.cpp" />
     <ClCompile Include="recording\RTMPPublisher.cpp" />
+    <ClCompile Include="recording\OutputPipeline.cpp" />
     <ClCompile Include="streaming\StreamMonitor.cpp" />
     <ClCompile Include="output\osd\OSDManager.cpp" />
     <ClCompile Include="core\Player.cpp" />
@@ -224,6 +225,7 @@
     <ClInclude Include="streaming\NetworkBuffer.h" />
     <ClInclude Include="streaming\NetworkStatistics.h" />
     <ClInclude Include="recording\RTMPPublisher.h" />
+    <ClInclude Include="recording\OutputPipeline.h" />
     <ClInclude Include="streaming\StreamMonitor.h" />
     <ClInclude Include="output\osd\OSDManager.h" />
     <ClInclude Include="core\Player.h" />
