@@ -97,6 +97,16 @@ private:
     void AudioSeekCleanup(
         double target);
 
+    // Present one decoded frame (phase 5.3): render + render stats +
+    // screenshot snapshot + time/progress + buffer-gate transition.
+    // Moved out of Player::Run so the loop keeps only the frame
+    // acquisition and A/V sync state machine.
+    void PresentFrame(
+        AVFrame* frame,
+        double pts,
+        bool& quit,
+        bool& lastBufferingBlock);
+
     // drop-count anchors for NetworkBuffer live stats (demux thread only)
 
     int64_t lastVideoDropped = 0;

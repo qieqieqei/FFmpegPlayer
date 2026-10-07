@@ -1685,3 +1685,90 @@ int PlaybackSession::GetVideoQueueCapacity() const
 
     return MAX_VIDEO_PACKETS;
 }
+
+// ============================================================
+// Present one decoded video frame (phase 5.3, moved from Player::Run)
+//
+// Render + render statistics + screenshot snapshot + current time /
+// progress + the live buffer-gate transition bookkeeping. Run() now
+// keeps only frame acquisition and A/V sync, then calls this.
+// ============================================================
+
+void PlaybackSession::PresentFrame(
+    AVFrame* frame,
+    double pts,
+    bool& quit,
+    bool& lastBufferingBlock)
+{
+    // ---------- render ----------
+
+    RenderFrame(
+        frame,
+        media.presenter.GetWindow(),
+        media.presenter.GetRenderer(),
+        media.presenter.GetTexture(),
+        &owner,
+        quit);
+
+    owner.statistics->OnFrameRendered();
+
+    // network statistics: one frame rendered (output FPS)
+    if (owner.networkStatistics)
+    {
+        owner.networkStatistics->OnFrameRendered();
+    }
+
+    // render heartbeat (Debug level: silent by default, -v enables)
+    Logger::Debug()
+        << "[Player] Render frame pts : "
+        << pts
+        << " s"
+        << std::endl;
+
+    // keep a copy for screenshots (AVFramePtr releases the old frame)
+    media.presenter.SetLastFrame(frame);
+
+    // update time / progress
+    owner.SetCurrentTime(pts);
+
+    // update buffering statistics
+    owner.UpdateStatistics();
+
+    // live buffer state transition notice (7.3): print once on entry
+    // v2: buffer gate state sync (transition-driven, no per-frame toggle)
+    bool bufferingBlock =
+        media.useNetBuffer &&
+        owner.bufferController &&
+        owner.bufferController->IsConsumingBlocked();
+
+    if (bufferingBlock != lastBufferingBlock)
+    {
+        lastBufferingBlock = bufferingBlock;
+
+        if (!bufferingBlock && media.audioDevice)
+        {
+            // v2: release edge via render path - re-anchor audio clock
+            // to the frame just rendered (skip frozen-clock catch-up).
+            media.audioDevice->ResetClock(pts);
+        }
+
+        if (media.audioDevice)
+        {
+            media.audioDevice->SetPaused(bufferingBlock);
+        }
+
+        media.videoNetBuffer.SetDurationTrimEnabled(!bufferingBlock);
+
+        Logger::Info()
+            << "[Player] Buffer gate : "
+            << (bufferingBlock ? "HOLD" : "RELEASE")
+            << " state="
+            << (owner.bufferController ? owner.bufferController->GetStateName() : "?")
+            << " aclk="
+            << (media.audioDevice ?
+                media.audioDevice->GetAudioClock() : -1.0)
+            << " vclk="
+            << owner.syncController->GetVideoClockTime()
+            << std::endl;
+    }
+}

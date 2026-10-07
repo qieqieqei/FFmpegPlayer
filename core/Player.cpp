@@ -803,77 +803,13 @@ bool Player::Run()
                 static_cast<Uint32>(delay * 1000.0));
         }
 
-        // ---------- 渲染 ----------
+        // render (phase 5.3: moved to PlaybackSession::PresentFrame)
 
-        RenderFrame(
+        session->PresentFrame(
             frame.get(),
-            media->presenter.GetWindow(),
-            media->presenter.GetRenderer(),
-            media->presenter.GetTexture(),
-            this,
-            quit);
-
-        statistics->OnFrameRendered();
-
-        // 网络统计：渲染了一帧（输出 FPS�?
-        if (networkStatistics)
-        {
-            networkStatistics->OnFrameRendered();
-        }
-
-        // 渲染心跳（Debug 级别：默认不打印�?v 开启）
-        Logger::Debug()
-            << "[Player] Render frame pts : "
-            << pts
-            << " s"
-            << std::endl;
-
-        // 保存副本供截图（AVFramePtr 自动释放旧帧�?
-        media->presenter.SetLastFrame(frame.get());
-
-        // 更新时间 / 进度
-        SetCurrentTime(pts);
-
-        // 更新缓冲统计
-        UpdateStatistics();
-
-        // 直播缓冲状态跳变提示（7.3）：进入"缓冲�?时一次性打�?
-        // v2: buffer gate state sync (transition-driven, no per-frame toggle)
-        bool bufferingBlock =
-            media->useNetBuffer &&
-            bufferController &&
-            bufferController->IsConsumingBlocked();
-
-        if (bufferingBlock != lastBufferingBlock)
-        {
-            lastBufferingBlock = bufferingBlock;
-
-            if (!bufferingBlock && media->audioDevice)
-            {
-                // v2: release edge via render path - re-anchor audio clock
-                // to the frame just rendered (skip frozen-clock catch-up).
-                media->audioDevice->ResetClock(pts);
-            }
-
-            if (media->audioDevice)
-            {
-                media->audioDevice->SetPaused(bufferingBlock);
-            }
-
-            media->videoNetBuffer.SetDurationTrimEnabled(!bufferingBlock);
-
-            Logger::Info()
-                << "[Player] Buffer gate : "
-                << (bufferingBlock ? "HOLD" : "RELEASE")
-                << " state="
-                << (bufferController ? bufferController->GetStateName() : "?")
-                << " aclk="
-                << (media->audioDevice ?
-                    media->audioDevice->GetAudioClock() : -1.0)
-                << " vclk="
-                << syncController->GetVideoClockTime()
-                << std::endl;
-        }
+            pts,
+            quit,
+            lastBufferingBlock);
     }
 
     // ---------- 退出清�?----------
