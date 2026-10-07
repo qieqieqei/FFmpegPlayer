@@ -257,6 +257,9 @@
     <ClInclude Include="core\PlayerState.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
+    <ClInclude Include="core\MediaContext.h">
+      <Filter>澶存枃浠?/Filter>
+    </ClInclude>
     <ClInclude Include="app\Event.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>

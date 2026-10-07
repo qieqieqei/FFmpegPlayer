@@ -40,6 +40,7 @@
 #include <thread>
 
 #include "core/PlayerState.h"
+#include "core/MediaContext.h"
 #include "pipeline/demux/Demuxer.h"
 #include "pipeline/video/VideoDecoder.h"
 #include "pipeline/audio/AudioDecoder.h"
@@ -445,17 +446,8 @@ private:
 
     // ---------- 成员：核心对象（Player 拥有） ----------
 
-    // 解复用器（Demux 线程）
-    std::unique_ptr<Demuxer> demuxer;
-
-    // 视频解码器（Video 线程）
-    std::unique_ptr<VideoDecoder> videoDecoder;
-
-    // 硬件视频解码器（Video 线程；激活时优先于 videoDecoder）
-    std::unique_ptr<HardwareDecoder> hwDecoder;
-
-    // 硬件帧 -> 系统内存的拷贝目标（Video 线程，复用）
-    AVFramePtr hwTransferFrame;
+    // 媒体会话管线对象集合（随 OpenMedia/ReleaseMedia 重建）
+    std::unique_ptr<MediaContext> media;
 
     // 音频解码器（Audio 线程）
     std::unique_ptr<AudioDecoder> audioDecoder;

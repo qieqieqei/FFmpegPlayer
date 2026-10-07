@@ -20,6 +20,7 @@
 
 Player::Player()
 {
+    media = std::make_unique<MediaContext>();
 }
 
 Player::~Player()
@@ -269,17 +270,17 @@ bool Player::OpenMedia(
 
     // ---------- 解复用器 ----------
 
-    demuxer =
+    media->demuxer =
         std::make_unique<Demuxer>();
 
     // 网络参数（rtsp_transport / 超时 / 低延迟，来自 stream.json�?
     if (configManager)
     {
-        demuxer->SetNetworkConfig(
+        media->demuxer->SetNetworkConfig(
             configManager->GetStreamConfig());
     }
 
-    if (!demuxer->Open(path))
+    if (!media->demuxer->Open(path))
     {
         ErrorHandler::Log(
             ErrorTag::Player,
@@ -293,13 +294,13 @@ bool Player::OpenMedia(
     if (bufferController)
     {
         bufferController->SetLive(
-            demuxer->IsLive());
+            media->demuxer->IsLive());
     }
 
     // 直播流：Demux<->Decode 队列切换 NetworkBuffer（满丢最旧，低延迟）
     // 点播/本地文件：保�?PacketQueue 满阻塞背�?
     useNetBuffer =
-        demuxer->IsLive();
+        media->demuxer->IsLive();
 
     // 8.5：同步策略切直播 / 点播（LiveClock vs DropController�?
     if (syncController)
@@ -379,7 +380,7 @@ bool Player::OpenMedia(
         // 8.5：视频队列时长上限——积压超�?liveQueueMs 丢旧包追最�?
         // （与包数上限叠加；GOP 感知，不撕裂解码链）
         AVStream* liveVStream =
-            demuxer->GetVideoStream();
+            media->demuxer->GetVideoStream();
 
         if (liveVStream)
         {
@@ -397,7 +398,7 @@ bool Player::OpenMedia(
         // Push 不阻塞，积压超过 liveQueueMs 丢旧包；
         // 音频帧无解码依赖，丢弃安�?
         AVStream* liveAStream =
-            demuxer->GetAudioStream();
+            media->demuxer->GetAudioStream();
 
         if (liveAStream)
         {
@@ -451,19 +452,19 @@ bool Player::OpenMedia(
         streamMonitor->Reset();
     }
 
-    if (demuxer->IsNetwork())
+    if (media->demuxer->IsNetwork())
     {
         Logger::Info()
             << "[Player] Network stream : "
-            << demuxer->GetProtocol()
-            << (demuxer->IsLive() ?
+            << media->demuxer->GetProtocol()
+            << (media->demuxer->IsLive() ?
                 " (live)" :
                 " (vod)")
             << std::endl;
     }
 
     duration =
-        demuxer->GetDuration();
+        media->demuxer->GetDuration();
 
     Logger::Info()
         << "[Player] Duration : "
@@ -472,7 +473,7 @@ bool Player::OpenMedia(
         << std::endl;
 
     AVStream* vStream =
-        demuxer->GetVideoStream();
+        media->demuxer->GetVideoStream();
 
     // ---------- 视频解码�?----------
 
@@ -481,14 +482,14 @@ bool Player::OpenMedia(
     TryInitHardwareDecoder(
         vStream->codecpar);
 
-    videoDecoder =
+    media->videoDecoder =
         std::make_unique<VideoDecoder>();
 
     // 8.5：直播解码级低延迟（avcodec_open2 �?flags=low_delay�?
-    videoDecoder->SetLowDelay(
+    media->videoDecoder->SetLowDelay(
         useNetBuffer);
 
-    if (!videoDecoder->Init(
+    if (!media->videoDecoder->Init(
         vStream->codecpar))
     {
         ErrorHandler::Log(
@@ -499,7 +500,7 @@ bool Player::OpenMedia(
     }
 
     AVCodecContext* vCtx =
-        videoDecoder->GetContext();
+        media->videoDecoder->GetContext();
 
     // 直播重连可能拿到未解�?SPS 的流�?x0）：提前失败�?
     // 走重连循环重试（等下一个关键帧�?
@@ -520,14 +521,14 @@ bool Player::OpenMedia(
         std::make_unique<PlayerStatistics>();
 
     statistics->Init(
-        demuxer->GetFormatContext(),
-        demuxer->GetVideoIndex(),
-        demuxer->GetAudioIndex());
+        media->demuxer->GetFormatContext(),
+        media->demuxer->GetVideoIndex(),
+        media->demuxer->GetAudioIndex());
 
     // 无音频时按帧率匀速播�?
     AVRational fpsRat =
         av_guess_frame_rate(
-            demuxer->GetFormatContext(),
+            media->demuxer->GetFormatContext(),
             vStream,
             nullptr);
 
@@ -596,7 +597,7 @@ bool Player::OpenMedia(
     // ---------- 音频链路�?.0 独立 Audio 线程�?----------
 
     hasAudioStream =
-        demuxer->HasAudio();
+        media->demuxer->HasAudio();
 
     if (hasAudioStream)
     {
@@ -605,7 +606,7 @@ bool Player::OpenMedia(
             std::make_unique<AudioDecoder>();
 
         if (!audioDecoder->Init(
-            demuxer->GetAudioStream()->codecpar))
+            media->demuxer->GetAudioStream()->codecpar))
         {
             ErrorHandler::Log(
                 ErrorTag::Audio,
@@ -677,7 +678,7 @@ bool Player::OpenMedia(
     // 队列是成员对象（地址不变）；demuxer 每次重建需重新绑定
 
     seekController->Attach(
-        demuxer.get(),
+        media->demuxer.get(),
         &videoPacketQueue,
         &audioPacketQueue,
         &videoFrameQueue);
@@ -1660,8 +1661,8 @@ void Player::RequestSeek(
     double seconds)
 {
     // 直播流不�?Seek（RTSP/RTMP/直播 HLS�?
-    if (demuxer &&
-        !demuxer->IsSeekable())
+    if (media->demuxer &&
+        !media->demuxer->IsSeekable())
     {
         Logger::Warn()
             << "[Player] Seek ignored (live stream)"
@@ -2040,24 +2041,24 @@ void Player::SetAutoQuitOnEof(
 
 int Player::GetVideoWidth() const
 {
-    if (!videoDecoder ||
-        !videoDecoder->GetContext())
+    if (!media->videoDecoder ||
+        !media->videoDecoder->GetContext())
     {
         return 0;
     }
 
-    return videoDecoder->GetContext()->width;
+    return media->videoDecoder->GetContext()->width;
 }
 
 int Player::GetVideoHeight() const
 {
-    if (!videoDecoder ||
-        !videoDecoder->GetContext())
+    if (!media->videoDecoder ||
+        !media->videoDecoder->GetContext())
     {
         return 0;
     }
 
-    return videoDecoder->GetContext()->height;
+    return media->videoDecoder->GetContext()->height;
 }
 
 SwsContext* Player::GetSwsForFrame(
@@ -2138,9 +2139,9 @@ PlayerStatistics* Player::GetStatistics() const
 
 bool Player::IsHardwareDecode() const
 {
-    return hwDecoder &&
-        hwDecoder->IsReady() &&
-        hwDecoder->IsHardware();
+    return media->hwDecoder &&
+        media->hwDecoder->IsReady() &&
+        media->hwDecoder->IsHardware();
 }
 
 NetworkStatistics* Player::GetNetworkStatistics() const
@@ -2279,8 +2280,8 @@ void Player::UpdateStatistics()
 
     // 流媒体监控：仅网络流巡检（内部按 1s 节流�?
     if (streamMonitor &&
-        demuxer &&
-        demuxer->IsNetwork())
+        media->demuxer &&
+        media->demuxer->IsNetwork())
     {
         streamMonitor->Tick();
     }
@@ -2499,7 +2500,7 @@ int Player::GetVideoQueueCapacity() const
 
 bool Player::EnsureOutEncoders()
 {
-    if (!videoDecoder)
+    if (!media->videoDecoder)
     {
         return false;
     }
@@ -2519,7 +2520,7 @@ bool Player::EnsureOutEncoders()
     if (!outVideoEncoder)
     {
         AVCodecContext* vc =
-            videoDecoder->GetContext();
+            media->videoDecoder->GetContext();
 
         int fps =
             static_cast<int>(
@@ -2565,11 +2566,11 @@ bool Player::EnsureOutEncoders()
     // ---------- 音频编码器（无音频流则输出仅视频�?----------
 
     if (!outAudioEncoder &&
-        demuxer &&
-        demuxer->GetAudioStream())
+        media->demuxer &&
+        media->demuxer->GetAudioStream())
     {
         AVCodecParameters* ap =
-            demuxer->GetAudioStream()->codecpar;
+            media->demuxer->GetAudioStream()->codecpar;
 
         int sr =
             ap->sample_rate > 0 ?
@@ -3540,9 +3541,9 @@ void Player::StopThreads()
 
     // 打断网络流的阻塞读取（av_read_frame 会立即返回）
     // 否则 RTSP/HTTP 断线或超时时 join 会卡�?
-    if (demuxer)
+    if (media->demuxer)
     {
-        demuxer->SetAbort(true);
+        media->demuxer->SetAbort(true);
     }
 
     if (demuxThread.joinable())
@@ -3595,7 +3596,7 @@ void Player::DemuxLoop()
             break;
         }
 
-        if (!demuxer)
+        if (!media->demuxer)
         {
             break;
         }
@@ -3607,7 +3608,7 @@ void Player::DemuxLoop()
             av_packet_alloc());
 
         int ret =
-            demuxer->ReadPacket(pkt.get());
+            media->demuxer->ReadPacket(pkt.get());
 
         if (ret < 0)
         {
@@ -3629,8 +3630,8 @@ void Player::DemuxLoop()
             // ---------- 断网重连�?.3）：直播流报�?EOF 触发 ----------
 
             if (useNetBuffer &&
-                demuxer &&
-                demuxer->IsNetwork())
+                media->demuxer &&
+                media->demuxer->IsNetwork())
             {
                 Logger::Warn()
                     << "[Player] Network stream error, "
@@ -3640,7 +3641,7 @@ void Player::DemuxLoop()
                 reconnectRequested.store(true);
 
                 // 打断阻塞读，退�?Demux 线程（主循环负责重建�?
-                demuxer->SetAbort(true);
+                media->demuxer->SetAbort(true);
 
                 break;
             }
@@ -3667,7 +3668,7 @@ void Player::DemuxLoop()
         }
 
         if (pkt->stream_index ==
-            demuxer->GetVideoIndex())
+            media->demuxer->GetVideoIndex())
         {
             // 视频包入队（直播：NetworkBuffer 满丢最旧；点播：背压）
             // 8.4：失败时 pkt 仍归本作用域，RAII 自动释放
@@ -3675,7 +3676,7 @@ void Player::DemuxLoop()
         }
         else if (
             pkt->stream_index ==
-            demuxer->GetAudioIndex())
+            media->demuxer->GetAudioIndex())
         {
             // 音频包入队（直播：NetworkBuffer；点播：背压�?
             PushAudioPacket(std::move(pkt));
@@ -3714,43 +3715,43 @@ void Player::DemuxLoop()
 
 void Player::FlushVideoDecoder()
 {
-    if (hwDecoder &&
-        hwDecoder->IsReady())
+    if (media->hwDecoder &&
+        media->hwDecoder->IsReady())
     {
-        hwDecoder->Flush();
+        media->hwDecoder->Flush();
 
         return;
     }
 
-    if (videoDecoder)
+    if (media->videoDecoder)
     {
-        videoDecoder->Flush();
+        media->videoDecoder->Flush();
     }
 }
 
 bool Player::SendVideoPacket(
     AVPacket* pkt)
 {
-    if (hwDecoder &&
-        hwDecoder->IsReady())
+    if (media->hwDecoder &&
+        media->hwDecoder->IsReady())
     {
-        return hwDecoder->SendPacket(pkt);
+        return media->hwDecoder->SendPacket(pkt);
     }
 
-    return videoDecoder ?
-        videoDecoder->SendPacket(pkt) :
+    return media->videoDecoder ?
+        media->videoDecoder->SendPacket(pkt) :
         false;
 }
 
 DecodeResult Player::ReceiveVideoFrame(
     FramePtr& out)
 {
-    if (hwDecoder &&
-        hwDecoder->IsReady())
+    if (media->hwDecoder &&
+        media->hwDecoder->IsReady())
     {
         // 硬件路径：先�?GPU 帧，再回读到系统内存（NV12�?
         DecodeResult r =
-            hwDecoder->ReceiveFrame(out);
+            media->hwDecoder->ReceiveFrame(out);
 
         if (r != DecodeResult::Success)
         {
@@ -3758,21 +3759,21 @@ DecodeResult Player::ReceiveVideoFrame(
         }
 
         // 惰性创建回读目标帧
-        if (!hwTransferFrame)
+        if (!media->hwTransferFrame)
         {
-            hwTransferFrame.reset(
+            media->hwTransferFrame.reset(
                 av_frame_alloc());
 
-            if (!hwTransferFrame)
+            if (!media->hwTransferFrame)
             {
                 return DecodeResult::Error;
             }
         }
 
         // GPU �?-> 系统内存（软解模式直�?ref�?
-        if (!hwDecoder->TransferFrame(
+        if (!media->hwDecoder->TransferFrame(
             out.get(),
-            hwTransferFrame.get()))
+            media->hwTransferFrame.get()))
         {
             return DecodeResult::Error;
         }
@@ -3780,10 +3781,10 @@ DecodeResult Player::ReceiveVideoFrame(
         // 回读帧交给调用方（GPU �?out 自动释放�?
         out.reset(
             av_frame_clone(
-                hwTransferFrame.get()));
+                media->hwTransferFrame.get()));
 
         av_frame_unref(
-            hwTransferFrame.get());
+            media->hwTransferFrame.get());
 
         if (!out)
         {
@@ -3793,8 +3794,8 @@ DecodeResult Player::ReceiveVideoFrame(
         return DecodeResult::Success;
     }
 
-    return videoDecoder ?
-        videoDecoder->ReceiveFrame(out) :
+    return media->videoDecoder ?
+        media->videoDecoder->ReceiveFrame(out) :
         DecodeResult::Error;
 }
 
@@ -3802,7 +3803,7 @@ void Player::TryInitHardwareDecoder(
     AVCodecParameters* codecpar)
 {
     if (!codecpar ||
-        hwDecoder)
+        media->hwDecoder)
     {
         return;
     }
@@ -3858,14 +3859,14 @@ void Player::TryInitHardwareDecoder(
         return;
     }
 
-    hwDecoder =
+    media->hwDecoder =
         std::make_unique<HardwareDecoder>();
 
     // 8.5：直播解码级低延迟（硬件 + 软解回退两处 avcodec_open2�?
-    hwDecoder->SetLowDelay(
+    media->hwDecoder->SetLowDelay(
         useNetBuffer);
 
-    if (!hwDecoder->Init(
+    if (!media->hwDecoder->Init(
         cudaContext.get(),
         codecName,
         codecpar))
@@ -3875,7 +3876,7 @@ void Player::TryInitHardwareDecoder(
             << "failed, use software"
             << std::endl;
 
-        hwDecoder.reset();
+        media->hwDecoder.reset();
     }
 }
 
@@ -4031,9 +4032,9 @@ void Player::VideoDecodeLoop()
         }
 
         bool videoDecReady =
-            videoDecoder != nullptr ||
-            (hwDecoder &&
-                hwDecoder->IsReady());
+            media->videoDecoder != nullptr ||
+            (media->hwDecoder &&
+                media->hwDecoder->IsReady());
 
         if (!videoDecReady)
         {
@@ -4384,13 +4385,13 @@ void Player::ReleaseMedia()
 
     // ---------- 解码�?----------
 
-    hwTransferFrame.reset();
+    media->hwTransferFrame.reset();
 
-    hwDecoder.reset();
+    media->hwDecoder.reset();
 
-    videoDecoder.reset();
+    media->videoDecoder.reset();
 
-    demuxer.reset();
+    media->demuxer.reset();
 
     // ---------- 队列清空 + 复位 ----------
 
@@ -4485,8 +4486,8 @@ void Player::ProcessAudioFrame(
         if (pts != AV_NOPTS_VALUE)
         {
             AVStream* aStream =
-                demuxer ?
-                demuxer->GetAudioStream() :
+                media->demuxer ?
+                media->demuxer->GetAudioStream() :
                 nullptr;
 
             if (aStream)
@@ -4632,8 +4633,8 @@ double Player::GetFramePts(
     }
 
     AVStream* vStream =
-        demuxer ?
-        demuxer->GetVideoStream() :
+        media->demuxer ?
+        media->demuxer->GetVideoStream() :
         nullptr;
 
     if (!vStream)

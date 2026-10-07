@@ -235,6 +235,7 @@
     <ClInclude Include="output\osd\OSDManager.h" />
     <ClInclude Include="core\Player.h" />
     <ClInclude Include="core\PlayerState.h" />
+    <ClInclude Include="core\MediaContext.h" />
     <ClInclude Include="features\playlist\PlaylistManager.h" />
     <ClInclude Include="pipeline\queue\FrameQueue.h" />
     <ClInclude Include="pipeline\queue\PacketQueue.h" />
