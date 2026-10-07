@@ -69,6 +69,9 @@
     <ClCompile Include="output\video\Renderer.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
+    <ClCompile Include="output\video\VideoPresenter.cpp">
+      <Filter>婧愭枃浠?/Filter>
+    </ClCompile>
     <ClCompile Include="pipeline\demux\Demuxer.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
@@ -252,6 +255,9 @@
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
     <ClInclude Include="output\video\Renderer.h">
+      <Filter>澶存枃浠?/Filter>
+    </ClInclude>
+    <ClInclude Include="output\video\VideoPresenter.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
     <ClInclude Include="core\Player.h">

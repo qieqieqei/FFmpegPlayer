@@ -183,6 +183,7 @@
     <ClCompile Include="pipeline\queue\FrameQueue.cpp" />
     <ClCompile Include="pipeline\queue\PacketQueue.cpp" />
     <ClCompile Include="output\video\Renderer.cpp" />
+    <ClCompile Include="output\video\VideoPresenter.cpp" />
     <ClCompile Include="features\screenshot\ScreenshotManager.cpp" />
     <ClCompile Include="features\seek\SeekController.cpp" />
     <ClCompile Include="features\statistics\PlayerStatistics.cpp" />
@@ -242,6 +243,7 @@
     <ClInclude Include="pipeline\queue\FrameQueue.h" />
     <ClInclude Include="pipeline\queue\PacketQueue.h" />
     <ClInclude Include="output\video\Renderer.h" />
+    <ClInclude Include="output\video\VideoPresenter.h" />
     <ClInclude Include="features\screenshot\ScreenshotManager.h" />
     <ClInclude Include="features\seek\SeekController.h" />
     <ClInclude Include="features\statistics\PlayerStatistics.h" />

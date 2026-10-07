@@ -27,6 +27,7 @@
 #include "pipeline/queue/FrameQueue.h"
 #include "streaming/NetworkBuffer.h"
 #include "infra/FFmpegPtr.h"
+#include "output/video/VideoPresenter.h"
 
 struct MediaContext
 {
@@ -85,4 +86,10 @@ struct MediaContext
 
     // 是否存在可用音频流
     bool hasAudioStream = false;
+
+    // ---------- presentation (phase 5.2) ----------
+
+    // SDL window / renderer / textures + YUV->RGB sws + RGB buffer + last frame;
+    // created in PlaybackSession::OpenMedia, released in ReleaseMedia.
+    VideoPresenter presenter;
 };

@@ -336,48 +336,17 @@ bool PlaybackSession::OpenMedia(
     // （惰性创建：GetSwsForFrame 按实际帧格式建，
     //   硬解�?NV12 / 软解�?YUV420P 自动适配�?
 
-    owner.rgbLinesize =
-        vCtx->width * 3;
-
-    owner.rgbData =
-        std::make_unique<uint8_t[]>(
-            owner.rgbLinesize * vCtx->height);
-
-    // ---------- SDL 窗口 / 渲染�?----------
-
-    if (!InitSDL(
+    if (!media.presenter.Create(
         vCtx->width,
-        vCtx->height,
-        owner.window,
-        owner.renderer,
-        owner.texture))
+        vCtx->height))
     {
         return false;
     }
 
-    owner.rgbTexture =
-        SDL_CreateTexture(
-            owner.renderer,
-            SDL_PIXELFORMAT_RGB24,
-            SDL_TEXTUREACCESS_STREAMING,
-            vCtx->width,
-            vCtx->height);
-
-    if (!owner.rgbTexture)
-    {
-        ErrorHandler::LogSDL(
-            ErrorTag::Player,
-            "SDL_CreateTexture (RGB)");
-
-        return false;
-    }
-
-    // 切换媒体后恢复全屏状�?
+    // restore fullscreen state after a media switch
     if (owner.fullscreen)
     {
-        SDL_SetWindowFullscreen(
-            owner.window,
-            SDL_WINDOW_FULLSCREEN_DESKTOP);
+        media.presenter.ApplyFullscreen(true);
     }
 
     // ---------- 音频链路�?.0 独立 Audio 线程�?----------
@@ -1327,9 +1296,6 @@ void PlaybackSession::ReleaseMedia()
     // 输出链（7.4�?.6）：停止录制 / 推流 / HLS 并释�?
     owner.StopAllOutputs();
 
-    // 上一帧副�?
-    owner.lastFrame.reset();
-
     // ---------- 音频链路 ----------
 
     // 8.1：先解绑音频时钟，避�?MasterClock 持有悬空指针
@@ -1355,45 +1321,7 @@ void PlaybackSession::ReleaseMedia()
 
     // ---------- SDL 资源 ----------
 
-    if (owner.rgbTexture)
-    {
-        SDL_DestroyTexture(owner.rgbTexture);
-
-        owner.rgbTexture = nullptr;
-    }
-
-    if (owner.texture)
-    {
-        SDL_DestroyTexture(owner.texture);
-
-        owner.texture = nullptr;
-    }
-
-    if (owner.renderer)
-    {
-        SDL_DestroyRenderer(owner.renderer);
-
-        owner.renderer = nullptr;
-    }
-
-    if (owner.window)
-    {
-        SDL_DestroyWindow(owner.window);
-
-        owner.window = nullptr;
-    }
-
-    owner.rgbData.reset();
-
-    owner.rgbLinesize = 0;
-
-    owner.swsCtx.reset();
-
-    owner.swsSrcFmt = AV_PIX_FMT_NONE;
-
-    owner.swsSrcW = 0;
-
-    owner.swsSrcH = 0;
+    media.presenter.Destroy();
 
     // OSD 纹理绑定旧渲染器，销毁后重新初始�?
     if (owner.osdManager &&

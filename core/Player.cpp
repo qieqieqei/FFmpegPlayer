@@ -471,7 +471,7 @@ bool Player::Run()
             osdManager)
         {
             osdManager->SetSubtitle(
-                renderer,
+                media->presenter.GetRenderer(),
                 subtitleManager->GetTextAt(
                     GetCurrentTime()));
         }
@@ -807,9 +807,9 @@ bool Player::Run()
 
         RenderFrame(
             frame.get(),
-            window,
-            renderer,
-            texture,
+            media->presenter.GetWindow(),
+            media->presenter.GetRenderer(),
+            media->presenter.GetTexture(),
             this,
             quit);
 
@@ -829,8 +829,7 @@ bool Player::Run()
             << std::endl;
 
         // 保存副本供截图（AVFramePtr 自动释放旧帧�?
-        lastFrame.reset(
-            av_frame_clone(frame.get()));
+        media->presenter.SetLastFrame(frame.get());
 
         // 更新时间 / 进度
         SetCurrentTime(pts);
@@ -1363,7 +1362,7 @@ void Player::TakeScreenshot(
     const std::string& format)
 {
     if (!screenshotManager ||
-        !lastFrame)
+        !media->presenter.GetLastFrame())
     {
         ErrorHandler::Log(
             ErrorTag::Screenshot,
@@ -1373,13 +1372,13 @@ void Player::TakeScreenshot(
     }
 
     screenshotManager->SaveFrame(
-        lastFrame.get(),
+        media->presenter.GetLastFrame(),
         format);
 }
 
 void Player::ToggleFullScreen()
 {
-    if (!window)
+    if (!media->presenter.GetWindow())
     {
         return;
     }
@@ -1388,19 +1387,15 @@ void Player::ToggleFullScreen()
 
     if (fullscreen)
     {
-        SDL_SetWindowFullscreen(
-            window,
-            SDL_WINDOW_FULLSCREEN_DESKTOP);
+        media->presenter.ApplyFullscreen(true);
     }
     else
     {
-        SDL_SetWindowFullscreen(
-            window,
-            0);
+        media->presenter.ApplyFullscreen(false);
     }
 
     UpdateWindowTitle(
-        window,
+        media->presenter.GetWindow(),
         this);
 }
 
@@ -1543,7 +1538,7 @@ void Player::SetCurrentTime(
 
 SDL_Window* Player::GetWindow() const
 {
-    return window;
+    return media->presenter.GetWindow();
 }
 
 void Player::SetAutoQuitOnEof(
@@ -1577,62 +1572,22 @@ int Player::GetVideoHeight() const
 SwsContext* Player::GetSwsForFrame(
     AVFrame* frame)
 {
-    if (!frame)
-    {
-        return nullptr;
-    }
-
-    AVPixelFormat fmt =
-        static_cast<AVPixelFormat>(
-            frame->format);
-
-    // 格式 / 尺寸没变：复用现有转换器
-    if (swsCtx &&
-        swsSrcFmt == fmt &&
-        swsSrcW == frame->width &&
-        swsSrcH == frame->height)
-    {
-        return swsCtx.get();
-    }
-
-    // 变了（软�?YUV420P <-> 硬解 NV12，或新媒体）：重�?
-    swsCtx.reset(
-        sws_getContext(
-            frame->width,
-            frame->height,
-            fmt,
-            frame->width,
-            frame->height,
-            AV_PIX_FMT_RGB24,
-            SWS_BILINEAR,
-            nullptr,
-            nullptr,
-            nullptr));
-
-    if (swsCtx)
-    {
-        swsSrcFmt = fmt;
-
-        swsSrcW = frame->width;
-
-        swsSrcH = frame->height;
-    }
-
-    return swsCtx.get();}
+    return media->presenter.GetSwsForFrame(frame);
+}
 
 uint8_t* Player::GetRGBData() const
 {
-    return rgbData.get();
+    return media->presenter.GetRGBData();
 }
 
 int Player::GetRGBLinesize() const
 {
-    return rgbLinesize;
+    return media->presenter.GetRGBLinesize();
 }
 
 SDL_Texture* Player::GetRGBTexture() const
 {
-    return rgbTexture;
+    return media->presenter.GetRGBTexture();
 }
 
 FontManager* Player::GetFontManager() const

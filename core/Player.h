@@ -443,32 +443,9 @@ private:
     // 播放列表管理器
     std::unique_ptr<PlaylistManager> playlistManager;
 
-    // ---------- 成员：SDL 资源 ----------
-
-    SDL_Window* window = nullptr;
-
-    SDL_Renderer* renderer = nullptr;
-
-    SDL_Texture* texture = nullptr;        // YUV 视频纹理（预留）
-
-    SDL_Texture* rgbTexture = nullptr;     // RGB24 纹理
-
-    SwsContextPtr swsCtx;                    // YUV -> RGB 转换
-
-    // 转换器当前源格式（格式变化时重建 swsCtx）
-    AVPixelFormat swsSrcFmt = AV_PIX_FMT_NONE;
-
-    int swsSrcW = 0;                       // 转换器源宽
-
-    int swsSrcH = 0;                       // 转换器源高
-
     bool autoQuitOnEof = false;            // EOF 后自动退出（CLI 输出模式）
 
     int64_t eofWaitStartMs = -1;           // EOF 等待起始（自动退出计时）
-
-    std::unique_ptr<uint8_t[]> rgbData;      // RGB 缓冲
-
-    int rgbLinesize = 0;                   // RGB 每行字节数
 
     // ---------- 成员：OSD ----------
 
@@ -494,8 +471,5 @@ private:
     bool fullscreen = false;
 
     bool frameStepRequest = false;
-
-    // 上一帧副本（供截图 / EOF 显示）
-    AVFramePtr lastFrame;
 
 };
