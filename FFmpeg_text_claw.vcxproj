@@ -156,9 +156,6 @@
     <ClCompile Include="recording\AudioEncoder.cpp" />
     <ClCompile Include="recording\VideoEncoder.cpp" />
     <ClCompile Include="app\Event.cpp" />
-    <ClCompile Include="legacy\AudioFilter.cpp" />
-    <ClCompile Include="legacy\FilterGraph.cpp" />
-    <ClCompile Include="legacy\VideoFilter.cpp" />
     <ClCompile Include="output\osd\FontManager.cpp" />
     <ClCompile Include="hardware\CUDAContext.cpp" />
     <ClCompile Include="hardware\HardwareDecoder.cpp" />
@@ -166,7 +163,6 @@
     <ClCompile Include="pipeline\input\FileInput.cpp" />
     <ClCompile Include="pipeline\input\InputSource.cpp" />
     <ClCompile Include="pipeline\input\NetworkInput.cpp" />
-    <ClCompile Include="legacy\RTSPClient.cpp" />
     <ClCompile Include="app\main.cpp" />
     <ClCompile Include="recording\FLVMuxer.cpp" />
     <ClCompile Include="recording\HLSMuxer.cpp" />
@@ -189,7 +185,6 @@
     <ClCompile Include="features\statistics\PlayerStatistics.cpp" />
     <ClCompile Include="features\subtitle\SubtitleManager.cpp" />
     <ClCompile Include="sync\AudioClock.cpp" />
-    <ClCompile Include="legacy\Clock.cpp" />
     <ClCompile Include="sync\DropController.cpp" />
     <ClCompile Include="sync\LiveClock.cpp" />
     <ClCompile Include="sync\FrameScheduler.cpp" />
@@ -215,9 +210,6 @@
     <ClInclude Include="recording\AudioEncoder.h" />
     <ClInclude Include="recording\VideoEncoder.h" />
     <ClInclude Include="app\Event.h" />
-    <ClInclude Include="legacy\AudioFilter.h" />
-    <ClInclude Include="legacy\FilterGraph.h" />
-    <ClInclude Include="legacy\VideoFilter.h" />
     <ClInclude Include="output\osd\FontManager.h" />
     <ClInclude Include="hardware\CUDAContext.h" />
     <ClInclude Include="hardware\HardwareDecoder.h" />
@@ -225,7 +217,6 @@
     <ClInclude Include="pipeline\input\FileInput.h" />
     <ClInclude Include="pipeline\input\InputSource.h" />
     <ClInclude Include="pipeline\input\NetworkInput.h" />
-    <ClInclude Include="legacy\RTSPClient.h" />
     <ClInclude Include="recording\FLVMuxer.h" />
     <ClInclude Include="recording\HLSMuxer.h" />
     <ClInclude Include="recording\Muxer.h" />
@@ -249,7 +240,6 @@
     <ClInclude Include="features\statistics\PlayerStatistics.h" />
     <ClInclude Include="features\subtitle\SubtitleManager.h" />
     <ClInclude Include="sync\AudioClock.h" />
-    <ClInclude Include="legacy\Clock.h" />
     <ClInclude Include="sync\DropController.h" />
     <ClInclude Include="sync\LiveClock.h" />
     <ClInclude Include="sync\FrameScheduler.h" />

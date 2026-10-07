@@ -81,15 +81,6 @@
     <ClCompile Include="recording\VideoEncoder.cpp">
       <Filter>Encoder</Filter>
     </ClCompile>
-    <ClCompile Include="legacy\AudioFilter.cpp">
-      <Filter>Filter</Filter>
-    </ClCompile>
-    <ClCompile Include="legacy\FilterGraph.cpp">
-      <Filter>Filter</Filter>
-    </ClCompile>
-    <ClCompile Include="legacy\VideoFilter.cpp">
-      <Filter>Filter</Filter>
-    </ClCompile>
     <ClCompile Include="recording\FLVMuxer.cpp">
       <Filter>Muxer</Filter>
     </ClCompile>
@@ -162,9 +153,6 @@
     <ClCompile Include="pipeline\input\NetworkInput.cpp">
       <Filter>Input</Filter>
     </ClCompile>
-    <ClCompile Include="legacy\RTSPClient.cpp">
-      <Filter>Input</Filter>
-    </ClCompile>
     <ClCompile Include="streaming\NetworkBuffer.cpp">
       <Filter>Network</Filter>
     </ClCompile>
@@ -181,9 +169,6 @@
       <Filter>Queue</Filter>
     </ClCompile>
     <ClCompile Include="sync\AudioClock.cpp">
-      <Filter>Sync</Filter>
-    </ClCompile>
-    <ClCompile Include="legacy\Clock.cpp">
       <Filter>Sync</Filter>
     </ClCompile>
     <ClCompile Include="sync\LiveClock.cpp">
@@ -223,15 +208,6 @@
     </ClInclude>
     <ClInclude Include="recording\VideoEncoder.h">
       <Filter>Encoder</Filter>
-    </ClInclude>
-    <ClInclude Include="legacy\AudioFilter.h">
-      <Filter>Filter</Filter>
-    </ClInclude>
-    <ClInclude Include="legacy\FilterGraph.h">
-      <Filter>Filter</Filter>
-    </ClInclude>
-    <ClInclude Include="legacy\VideoFilter.h">
-      <Filter>Filter</Filter>
     </ClInclude>
     <ClInclude Include="recording\FLVMuxer.h">
       <Filter>Muxer</Filter>
@@ -323,9 +299,6 @@
     <ClInclude Include="pipeline\input\NetworkInput.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="legacy\RTSPClient.h">
-      <Filter>Input</Filter>
-    </ClInclude>
     <ClInclude Include="streaming\NetworkBuffer.h">
       <Filter>Network</Filter>
     </ClInclude>
@@ -342,9 +315,6 @@
       <Filter>Queue</Filter>
     </ClInclude>
     <ClInclude Include="sync\AudioClock.h">
-      <Filter>Sync</Filter>
-    </ClInclude>
-    <ClInclude Include="legacy\Clock.h">
       <Filter>Sync</Filter>
     </ClInclude>
     <ClInclude Include="sync\LiveClock.h">
