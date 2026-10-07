@@ -67,7 +67,7 @@
 
 **验证**：`MSBuild Debug|x64` = 0 error / 32 warning（与 4.4 基线一致，无新增）；`Release|x64` = 0 error / 32 warning；三样例 `--record` 全部 exit 0，FLV 时长 **12.833 / 22.655 / 141.8 s**（与 4.4 逐位一致），日志 ERROR/WARN = 0，尾行 `Threads Stopped → State : Stopped → All outputs stopped → Closed ×2`（两条 Closed 为既有 `Close()` 无幂等守卫所致，非本子步引入）。
 
-### 5.2 呈现簇外移 —— 完成（提交 `待填`）
+### 5.2 呈现簇外移 —— 完成（提交 `43fd50f`）
 
 **新增**：`output/video/VideoPresenter.{h,cpp}`（107 / 206 行，纯 ASCII 自撰；SDL + swscale/avutil `extern "C"` + `infra/FFmpegPtr.h`）。
 
