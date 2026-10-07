@@ -1670,8 +1670,8 @@ void Player::UpdateStatistics()
     }
 
     statistics->UpdateBuffers(
-        GetVideoQueueSize(),           // 视频包缓冲（直播=NetworkBuffer�?
-        GetAudioQueueSize(),           // 音频包缓�?
+        session->GetVideoQueueSize(),           // 视频包缓冲（直播=NetworkBuffer�?
+        session->GetAudioQueueSize(),           // 音频包缓�?
         media->videoFrameQueue.Size(),            // 视频帧缓�?
         media->audioDevice ?
             media->audioDevice->GetQueuedSize() : 0,   // 音频缓冲（字节）
@@ -1695,8 +1695,8 @@ void Player::UpdateStatistics()
 
     // 缓冲水位：包�?
     networkStatistics->SetBufferLevel(
-        GetVideoQueueSize(),
-        GetVideoQueueCapacity());
+        session->GetVideoQueueSize(),
+        session->GetVideoQueueCapacity());
 
     // 估算缓冲时长（毫秒）�?
     //   视频：包�?* 帧时�?
@@ -1719,7 +1719,7 @@ void Player::UpdateStatistics()
     else
     {
         videoMs =
-            GetVideoQueueSize() *
+            session->GetVideoQueueSize() *
             media->videoFrameDuration *
             1000.0;
     }
@@ -1859,140 +1859,6 @@ void Player::UpdateStatistics()
                 << std::endl;
         }
     }
-}
-
-// ============================================================
-// 直播/点播双路径包队列�?.3�?
-//
-//   点播/本地文件：PacketQueue（满阻塞背压，防无界内存�?
-//   直播流：       NetworkBuffer（满丢最旧包，控制延迟上限）
-//
-// 统一入口，Demux / Video / Audio 线程不关心当前模式�?
-// ============================================================
-
-bool Player::PushVideoPacket(
-    PacketPtr&& pkt)
-{
-    if (media->useNetBuffer)
-    {
-        bool ok =
-            media->videoNetBuffer.Push(
-                std::move(pkt));
-
-        // 8.4：同步丢包统计（GOP 段丢包可能一次丢多个�?
-        if (networkStatistics)
-        {
-            int64_t dropped =
-                media->videoNetBuffer.GetDroppedCount();
-
-            int64_t delta =
-                dropped - lastVideoDropped;
-
-            if (delta > 0)
-            {
-                networkStatistics->OnPacketDropped(
-                    delta);
-
-                lastVideoDropped = dropped;
-            }
-        }
-
-        return ok;
-    }
-
-    return media->videoPacketQueue.Push(
-        std::move(pkt),
-        MAX_VIDEO_PACKETS);
-}
-
-bool Player::PushAudioPacket(
-    PacketPtr&& pkt)
-{
-    // 8.5：直播时 audioPacketQueue 处于 LiveMode—�?
-    // Push 不阻塞，积压超过 live_max_queue_ms 丢旧包；
-    // 点播时保持满阻塞背压。两种模式共用一个队列�?
-    bool ok =
-        media->audioPacketQueue.Push(
-            std::move(pkt),
-            MAX_AUDIO_PACKETS);
-
-    // 8.4：同步丢包统计（LiveMode 丢旧包可能一次丢多个�?
-    if (networkStatistics)
-    {
-        int64_t dropped =
-            media->audioPacketQueue.GetDroppedCount();
-
-        int64_t delta =
-            dropped - lastAudioDropped;
-
-        if (delta > 0)
-        {
-            networkStatistics->OnPacketDropped(
-                delta);
-
-            lastAudioDropped = dropped;
-        }
-    }
-
-    return ok;
-}
-
-PacketPtr Player::PopVideoPacket(
-    int timeoutMs)
-{
-    if (media->useNetBuffer)
-    {
-        return media->videoNetBuffer.Pop(timeoutMs);
-    }
-
-    return media->videoPacketQueue.Pop(timeoutMs);
-}
-
-PacketPtr Player::PopAudioPacket(
-    int timeoutMs)
-{
-    // 8.5：直�?点播统一�?PacketQueue（LiveMode 内部处理丢旧包）
-    return media->audioPacketQueue.Pop(timeoutMs);
-}
-
-bool Player::IsVideoQueueInterrupted() const
-{
-    if (media->useNetBuffer)
-    {
-        return media->videoNetBuffer.IsInterrupted();
-    }
-
-    return media->videoPacketQueue.IsInterrupted();
-}
-
-bool Player::IsAudioQueueInterrupted() const
-{
-    return media->audioPacketQueue.IsInterrupted();
-}
-
-int Player::GetVideoQueueSize() const
-{
-    if (media->useNetBuffer)
-    {
-        return media->videoNetBuffer.Size();
-    }
-
-    return media->videoPacketQueue.Size();
-}
-
-int Player::GetAudioQueueSize() const
-{
-    return media->audioPacketQueue.Size();
-}
-
-int Player::GetVideoQueueCapacity() const
-{
-    if (media->useNetBuffer)
-    {
-        return media->videoNetBuffer.GetMaxSize();
-    }
-
-    return MAX_VIDEO_PACKETS;
 }
 
 // ============================================================

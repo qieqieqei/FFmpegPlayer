@@ -48,6 +48,30 @@ public:
 
     void StopThreads();
 
+    // ---- packet queue routing (phase 5.1, moved from Player) ----
+
+    bool PushVideoPacket(
+        PacketPtr&& pkt);
+
+    bool PushAudioPacket(
+        PacketPtr&& pkt);
+
+    PacketPtr PopVideoPacket(
+        int timeoutMs);
+
+    PacketPtr PopAudioPacket(
+        int timeoutMs);
+
+    bool IsVideoQueueInterrupted() const;
+
+    bool IsAudioQueueInterrupted() const;
+
+    int GetVideoQueueSize() const;
+
+    int GetAudioQueueSize() const;
+
+    int GetVideoQueueCapacity() const;
+
 private:
 
     void DemuxLoop();
@@ -72,6 +96,12 @@ private:
 
     void AudioSeekCleanup(
         double target);
+
+    // drop-count anchors for NetworkBuffer live stats (demux thread only)
+
+    int64_t lastVideoDropped = 0;
+
+    int64_t lastAudioDropped = 0;
 
     Player& owner;
 

@@ -52,4 +52,18 @@
 
 ## 6. 执行记录（滚动更新）
 
-- 待填。
+### 5.1 队列路由外移 —— 完成（提交 `待填`）
+
+**搬移清单**（9 方法 + 2 锚点，`Player` → `PlaybackSession`）：
+
+- 方法：`PushVideoPacket` / `PushAudioPacket` / `PopVideoPacket` / `PopAudioPacket` / `IsVideoQueueInterrupted` / `IsAudioQueueInterrupted` / `GetVideoQueueSize` / `GetAudioQueueSize` / `GetVideoQueueCapacity`
+- 成员：`lastVideoDropped` / `lastAudioDropped`
+- `PlaybackSession` 内一律 `media.xxx`（引用，非指针）；丢包统计经 `owner.networkStatistics`（`PlaybackSession` 是 `Player` 的 friend，阶段 4 已建立）
+- `PlaybackSession.cpp` 内原 `owner.Push/Pop*` / `owner.Is*Interrupted` 调用改回直接调用（无转发层）
+- `Player` 侧仅 `Player::UpdateStatistics` 有 3 个调用点（1653 附近 `GetVideoQueueSize()×3 / GetAudioQueueSize()×1 / GetVideoQueueCapacity()×1`）→ 改前缀 `session->`
+
+**实测 diff**：`Player.h -32`（含段注释）、`Player.cpp -144`、`PlaybackSession.h +30`、`PlaybackSession.cpp +149`（9 个定义全部 ASCII 注释）。
+
+**未动（有意）**：`MAX_VIDEO_PACKETS=120 / MAX_AUDIO_PACKETS=60 / MAX_VIDEO_FRAMES=12` 仍在 `core/Player.h:84-88` 文件作用域；其中 `MAX_VIDEO_FRAMES` 早已被 `PlaybackSession.cpp` 使用（经 `Player.h` 传递可见）。队列容量常量归 `pipeline/` 的清理属阶段 8 收口，避免本子步扩大范围。
+
+**验证**：`MSBuild Debug|x64` = 0 error / 32 warning（与 4.4 基线一致，无新增）；`Release|x64` = 0 error / 32 warning；三样例 `--record` 全部 exit 0，FLV 时长 **12.833 / 22.655 / 141.8 s**（与 4.4 逐位一致），日志 ERROR/WARN = 0，尾行 `Threads Stopped → State : Stopped → All outputs stopped → Closed ×2`（两条 Closed 为既有 `Close()` 无幂等守卫所致，非本子步引入）。

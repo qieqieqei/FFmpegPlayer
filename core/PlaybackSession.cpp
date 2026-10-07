@@ -701,14 +701,14 @@ void PlaybackSession::DemuxLoop()
         {
             // 视频包入队（直播：NetworkBuffer 满丢最旧；点播：背压）
             // 8.4：失败时 pkt 仍归本作用域，RAII 自动释放
-            owner.PushVideoPacket(std::move(pkt));
+            PushVideoPacket(std::move(pkt));
         }
         else if (
             pkt->stream_index ==
             media.demuxer->GetAudioIndex())
         {
             // 音频包入队（直播：NetworkBuffer；点播：背压�?
-            owner.PushAudioPacket(std::move(pkt));
+            PushAudioPacket(std::move(pkt));
         }
         else
         {
@@ -965,11 +965,11 @@ void PlaybackSession::VideoDecodeLoop()
         }
 
         PacketPtr pkt =
-            owner.PopVideoPacket(50);
+            PopVideoPacket(50);
 
         if (!pkt)
         {
-            if (owner.IsVideoQueueInterrupted())
+            if (IsVideoQueueInterrupted())
             {
                 // Seek / 退出中：等待队列恢�?
                 SDL_Delay(2);
@@ -1029,7 +1029,7 @@ void PlaybackSession::VideoDecodeLoop()
             continue;
         }
 
-        if (owner.IsVideoQueueInterrupted())
+        if (IsVideoQueueInterrupted())
         {
             // 取到的是 Seek 前的旧包，丢弃（RAII 自动释放�?
             continue;
@@ -1169,11 +1169,11 @@ void PlaybackSession::AudioDecodeLoop()
         // so PCM still accumulates during rebuffer and buf=min(net,aud)
         // can reach highWater (gating audio froze PCM -> deadlock).
         PacketPtr pkt =
-            owner.PopAudioPacket(50);
+            PopAudioPacket(50);
 
         if (!pkt)
         {
-            if (owner.IsAudioQueueInterrupted())
+            if (IsAudioQueueInterrupted())
             {
                 // Seek / 退出中：等待队列恢�?
                 SDL_Delay(2);
@@ -1214,7 +1214,7 @@ void PlaybackSession::AudioDecodeLoop()
             continue;
         }
 
-        if (owner.IsAudioQueueInterrupted() ||
+        if (IsAudioQueueInterrupted() ||
             audioAbort.load())
         {
             // Seek / 退出期间丢弃（RAII 自动释放�?
@@ -1623,4 +1623,137 @@ void PlaybackSession::AudioSeekCleanup(
         << target
         << " s"
         << std::endl;
+}
+
+// ============================================================
+// packet queue routing (phase 5.1, moved from Player)
+//
+//   local / VOD : PacketQueue (blocking backpressure on full)
+//   live stream : NetworkBuffer (drop-oldest, latency capped)
+//
+// Both paths share one entry point so Demux / Video / Audio
+// threads do not care which mode is active.
+// ============================================================
+
+bool PlaybackSession::PushVideoPacket(
+    PacketPtr&& pkt)
+{
+    if (media.useNetBuffer)
+    {
+        bool ok =
+            media.videoNetBuffer.Push(
+                std::move(pkt));
+
+        // live stats: dropped-count delta (a whole GOP may drop at once)
+        if (owner.networkStatistics)
+        {
+            int64_t dropped =
+                media.videoNetBuffer.GetDroppedCount();
+
+            int64_t delta =
+                dropped - lastVideoDropped;
+
+            if (delta > 0)
+            {
+                owner.networkStatistics->OnPacketDropped(
+                    delta);
+
+                lastVideoDropped = dropped;
+            }
+        }
+
+        return ok;
+    }
+
+    return media.videoPacketQueue.Push(
+        std::move(pkt),
+        MAX_VIDEO_PACKETS);
+}
+
+bool PlaybackSession::PushAudioPacket(
+    PacketPtr&& pkt)
+{
+    // live mode: non-blocking, drops oldest when over live_max_queue_ms
+    // VOD: blocking backpressure (same queue object)
+    bool ok =
+        media.audioPacketQueue.Push(
+            std::move(pkt),
+            MAX_AUDIO_PACKETS);
+
+    if (owner.networkStatistics)
+    {
+        int64_t dropped =
+            media.audioPacketQueue.GetDroppedCount();
+
+        int64_t delta =
+            dropped - lastAudioDropped;
+
+        if (delta > 0)
+        {
+            owner.networkStatistics->OnPacketDropped(
+                delta);
+
+            lastAudioDropped = dropped;
+        }
+    }
+
+    return ok;
+}
+
+PacketPtr PlaybackSession::PopVideoPacket(
+    int timeoutMs)
+{
+    if (media.useNetBuffer)
+    {
+        return media.videoNetBuffer.Pop(timeoutMs);
+    }
+
+    return media.videoPacketQueue.Pop(timeoutMs);
+}
+
+PacketPtr PlaybackSession::PopAudioPacket(
+    int timeoutMs)
+{
+    // live and VOD share the same PacketQueue (LiveMode handles drops)
+    return media.audioPacketQueue.Pop(timeoutMs);
+}
+
+bool PlaybackSession::IsVideoQueueInterrupted() const
+{
+    if (media.useNetBuffer)
+    {
+        return media.videoNetBuffer.IsInterrupted();
+    }
+
+    return media.videoPacketQueue.IsInterrupted();
+}
+
+bool PlaybackSession::IsAudioQueueInterrupted() const
+{
+    return media.audioPacketQueue.IsInterrupted();
+}
+
+int PlaybackSession::GetVideoQueueSize() const
+{
+    if (media.useNetBuffer)
+    {
+        return media.videoNetBuffer.Size();
+    }
+
+    return media.videoPacketQueue.Size();
+}
+
+int PlaybackSession::GetAudioQueueSize() const
+{
+    return media.audioPacketQueue.Size();
+}
+
+int PlaybackSession::GetVideoQueueCapacity() const
+{
+    if (media.useNetBuffer)
+    {
+        return media.videoNetBuffer.GetMaxSize();
+    }
+
+    return MAX_VIDEO_PACKETS;
 }

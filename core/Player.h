@@ -315,32 +315,6 @@ public:
     // 更新统计信息（渲染循环每帧调用）
     void UpdateStatistics();
 
-    // ---------- 直播/点播双路径包队列（7.3 / 8.4） ----------
-    // 点播/本地：PacketQueue（满阻塞背压）；直播：NetworkBuffer（满丢最旧）
-    // 8.4：移动语义交接所有权（PacketPtr / FramePtr），无裸指针共享
-
-    bool PushVideoPacket(
-        PacketPtr&& pkt);
-
-    bool PushAudioPacket(
-        PacketPtr&& pkt);
-
-    PacketPtr PopVideoPacket(
-        int timeoutMs);
-
-    PacketPtr PopAudioPacket(
-        int timeoutMs);
-
-    bool IsVideoQueueInterrupted() const;
-
-    bool IsAudioQueueInterrupted() const;
-
-    int GetVideoQueueSize() const;
-
-    int GetAudioQueueSize() const;
-
-    int GetVideoQueueCapacity() const;
-
 private:
 
     // ---------- 工具 ----------
@@ -412,12 +386,6 @@ private:
 
     // 网络流统计（7.2：FPS / 码率 / 丢包 / 延迟）
     std::unique_ptr<NetworkStatistics> networkStatistics;
-
-    // 8.4：网络丢包计数增量同步锚点（上次已上报到统计的 dropped 值）
-    // 仅 Demux 线程访问，无需加锁
-    int64_t lastVideoDropped = 0;
-
-    int64_t lastAudioDropped = 0;
 
     // 网络缓冲控制（7.3：缓冲水位）
     std::unique_ptr<BufferController> bufferController;
