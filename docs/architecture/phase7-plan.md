@@ -141,5 +141,34 @@ recording/OutputPipeline  →  recording/{VideoEncoder,AudioEncoder,FLVMuxer,HLS
 
 ## 7. 执行记录（滚动回填）
 
-- **7.1 …**（待填）
-- **7.2 …**（待填）
+### 7.1 完成 —— 输出链整体外移（提交 `123d238`，已推送 `9228c15..123d238`）
+
+**结果**：`core/Player.cpp` 1955 → **1016**（−939，进入 800~1300 目标区间）；`core/Player.h` 473 → **410**；
+`core/PlaybackSession.cpp` 2756 → **2812**；`core/PlaybackSession.h` 208 → **209**；
+新增 `recording/OutputPipeline.h` 142 / `.cpp` 1027；vcxproj 104 → 106 条目（filters 未登记，依 `RTMPPublisher.*` 先例）。
+
+**做法**（与设计一致）：
+- 21 个方法中 **20 个纯改名自动搬移**（`Player::X` → `OutputPipeline::X`，成员随之迁出故方法体几乎无需前缀）；
+  `EnsureOutEncoders` **手写**（`media->…` → `srcInfo.…`；`configManager` → 成员 `config`）。
+- `configManager` 出现于 `EnsureOutEncoders`/`StartPushing`/`StartHLS`，脚本统一改写为 `config`。
+- 15 个成员 + `CopyCodecPar` 静态函数一并外移；`Player.h` 删成员块 H404–H435 与私有声明块 H326–H355。
+- `Player` 保留 12 个公共薄转发；`PlaybackSession` 4 处调用点改走 `owner.output->`；`OpenMedia` 注入 `SetSourceInfo`。
+- `output` 于 `LoadConfig()` 内 `configManager` 之后创建（早于 `Init`→`OpenMedia`）。
+
+**验证**：Debug/Release 均 **0 error**、无新增 warning；三样例 `--record` 回归 FLV **7280913 / 9666764 / 59694920** B、
+时长 **12.833 / 22.655 / 141.800** s，与阶段 6 基线**逐位一致**，ERROR/WARN = 0。
+
+**踩坑（详见 `phase7-report.md §5`）**：
+1. 注入块若落在 `return true;` **之后** → 死代码（编译/运行皆正常，仅录制静默不启动、无 `.flv`）→ 必须插在**最后一条 `return` 之前**；回归须核对产物而非只看 exit code。
+2. 文件级 `static CopyCodecPar` 须随调用者迁入 `OutputPipeline.cpp`（否则 C3861 ×6；留在原地则变未引用静态函数告警）。
+3. 单行方法定义（`bool Player::IsRecording() const { … }`）的转发需按 `{` 切分签名行，否则原方法体残留在签名里。
+
+### 7.2 完成 —— 阶段报告与收口
+
+- 新建 `docs/architecture/phase7-report.md`（含设计、指标、验证、三条踩坑、阶段 8 待办）。
+- 回填本 §7 执行记录。
+
+### 阶段 7 结论
+
+输出链外移完成；`Player.cpp` 已进入 800~1300 区间。剩余 ≈1016 行 = `Init`/`Close`/`LoadConfig` 装配 + `Run()` 主循环壳 + UI 访问器，
+连同 `core → app` 反向依赖收口一并交**阶段 8**（目标 `Player` → 200~500 行）。
