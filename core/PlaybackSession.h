@@ -72,6 +72,19 @@ public:
 
     int GetVideoQueueCapacity() const;
 
+    // seek orchestration (phase 6.3, moved from Player; Player keeps
+    // thin facade forwarders so app/Event call sites are unchanged)
+    void RequestSeek(
+        double seconds);
+
+    bool HasSeekRequest() const;
+
+    double GetSeekPosition() const;
+
+    bool IsSeekHandled() const;
+
+    void ClearSeekHandled();
+
 private:
 
     void DemuxLoop();

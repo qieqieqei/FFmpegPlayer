@@ -638,44 +638,7 @@ bool Player::IsSubtitleEnabled() const
 void Player::RequestSeek(
     double seconds)
 {
-    // 直播流不�?Seek（RTSP/RTMP/直播 HLS�?
-    if (media->demuxer &&
-        !media->demuxer->IsSeekable())
-    {
-        Logger::Warn()
-            << "[Player] Seek ignored (live stream)"
-            << std::endl;
-
-        return;
-    }
-
-    // 夹在 [0, 时长] �?
-    seconds =
-        std::max(
-            0.0,
-            std::min(
-                media->duration,
-                seconds));
-
-    Logger::Info()
-        << "[Player] Request Seek : "
-        << seconds
-        << " s"
-        << std::endl;
-
-    // 记录目标（渲染线程丢弃旧帧用�?
-    session->seekPosition = seconds;
-
-    session->seekPending = true;
-
-    // 让阻塞中�?PushPCM 立即返回（音频线程才能处�?Seek 清理�?
-    session->audioAbort.store(true);
-
-    // 交给 Demux 线程执行
-    if (seekController)
-    {
-        seekController->Request(seconds);
-    }
+    session->RequestSeek(seconds);
 }
 
 void Player::TogglePause()
@@ -881,27 +844,22 @@ const char* Player::FullScreenToString() const
 
 bool Player::HasSeekRequest() const
 {
-    return session->seekPending;
+    return session->HasSeekRequest();
 }
 
 double Player::GetSeekPosition() const
 {
-    return session->seekPosition;
+    return session->GetSeekPosition();
 }
 
 bool Player::IsSeekHandled() const
 {
-    return seekController ?
-        seekController->IsHandled() :
-        false;
+    return session->IsSeekHandled();
 }
 
 void Player::ClearSeekHandled()
 {
-    if (seekController)
-    {
-        seekController->ClearHandled();
-    }
+    session->ClearSeekHandled();
 }
 
 // ============================================================

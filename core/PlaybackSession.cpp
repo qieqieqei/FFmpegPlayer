@@ -2497,3 +2497,71 @@ void PlaybackSession::UpdateStatistics()
         }
     }
 }
+
+void PlaybackSession::RequestSeek(
+    double seconds)
+{
+    // 直播流不�?Seek（RTSP/RTMP/直播 HLS�?
+    if (media.demuxer &&
+        !media.demuxer->IsSeekable())
+    {
+        Logger::Warn()
+            << "[Player] Seek ignored (live stream)"
+            << std::endl;
+
+        return;
+    }
+
+    // 夹在 [0, 时长] �?
+    seconds =
+        std::max(
+            0.0,
+            std::min(
+                media.duration,
+                seconds));
+
+    Logger::Info()
+        << "[Player] Request Seek : "
+        << seconds
+        << " s"
+        << std::endl;
+
+    // 记录目标（渲染线程丢弃旧帧用�?
+    seekPosition = seconds;
+
+    seekPending = true;
+
+    // 让阻塞中�?PushPCM 立即返回（音频线程才能处�?Seek 清理�?
+    audioAbort.store(true);
+
+    // 交给 Demux 线程执行
+    if (owner.seekController)
+    {
+        owner.seekController->Request(seconds);
+    }
+}
+
+bool PlaybackSession::HasSeekRequest() const
+{
+    return seekPending;
+}
+
+double PlaybackSession::GetSeekPosition() const
+{
+    return seekPosition;
+}
+
+bool PlaybackSession::IsSeekHandled() const
+{
+    return owner.seekController ?
+        owner.seekController->IsHandled() :
+        false;
+}
+
+void PlaybackSession::ClearSeekHandled()
+{
+    if (owner.seekController)
+    {
+        owner.seekController->ClearHandled();
+    }
+}
