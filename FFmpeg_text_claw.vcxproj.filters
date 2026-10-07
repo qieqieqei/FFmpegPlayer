@@ -63,303 +63,303 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
+    <ClCompile Include="app\main.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="Renderer.cpp">
+    <ClCompile Include="output\video\Renderer.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="Demuxer.cpp">
+    <ClCompile Include="pipeline\demux\Demuxer.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="Encoder\AudioEncoder.cpp">
+    <ClCompile Include="recording\AudioEncoder.cpp">
       <Filter>Encoder</Filter>
     </ClCompile>
-    <ClCompile Include="Encoder\VideoEncoder.cpp">
+    <ClCompile Include="recording\VideoEncoder.cpp">
       <Filter>Encoder</Filter>
     </ClCompile>
-    <ClCompile Include="Filter\AudioFilter.cpp">
+    <ClCompile Include="legacy\AudioFilter.cpp">
       <Filter>Filter</Filter>
     </ClCompile>
-    <ClCompile Include="Filter\FilterGraph.cpp">
+    <ClCompile Include="legacy\FilterGraph.cpp">
       <Filter>Filter</Filter>
     </ClCompile>
-    <ClCompile Include="Filter\VideoFilter.cpp">
+    <ClCompile Include="legacy\VideoFilter.cpp">
       <Filter>Filter</Filter>
     </ClCompile>
-    <ClCompile Include="Muxer\FLVMuxer.cpp">
+    <ClCompile Include="recording\FLVMuxer.cpp">
       <Filter>Muxer</Filter>
     </ClCompile>
-    <ClCompile Include="Muxer\HLSMuxer.cpp">
+    <ClCompile Include="recording\HLSMuxer.cpp">
       <Filter>Muxer</Filter>
     </ClCompile>
-    <ClCompile Include="Muxer\Muxer.cpp">
+    <ClCompile Include="recording\Muxer.cpp">
       <Filter>Muxer</Filter>
     </ClCompile>
-    <ClCompile Include="Hardware\CUDAContext.cpp">
+    <ClCompile Include="hardware\CUDAContext.cpp">
       <Filter>Hardware</Filter>
     </ClCompile>
-    <ClCompile Include="Hardware\HardwareDecoder.cpp">
+    <ClCompile Include="hardware\HardwareDecoder.cpp">
       <Filter>Hardware</Filter>
     </ClCompile>
-    <ClCompile Include="Network\StreamMonitor.cpp">
+    <ClCompile Include="streaming\StreamMonitor.cpp">
       <Filter>Network</Filter>
     </ClCompile>
-    <ClCompile Include="VideoDecoder.cpp">
+    <ClCompile Include="pipeline\video\VideoDecoder.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="Player.cpp">
+    <ClCompile Include="core\Player.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="Event.cpp">
+    <ClCompile Include="app\Event.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="FontManager.cpp">
+    <ClCompile Include="output\osd\FontManager.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="OSDManager.cpp">
+    <ClCompile Include="output\osd\OSDManager.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="AudioDecoder.cpp">
+    <ClCompile Include="pipeline\audio\AudioDecoder.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="AudioResampler.cpp">
+    <ClCompile Include="pipeline\audio\AudioResampler.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="AudioDevice.cpp">
+    <ClCompile Include="output\audio\AudioDevice.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="Audio\AudioSpeedController.cpp">
+    <ClCompile Include="pipeline\audio\AudioSpeedController.cpp">
       <Filter>Audio</Filter>
     </ClCompile>
-    <ClCompile Include="Audio\PCMQueue.cpp">
+    <ClCompile Include="pipeline\audio\PCMQueue.cpp">
       <Filter>Audio</Filter>
     </ClCompile>
-    <ClCompile Include="Audio\SpeedController.cpp">
+    <ClCompile Include="pipeline\audio\SpeedController.cpp">
       <Filter>Audio</Filter>
     </ClCompile>
-    <ClCompile Include="Audio\VolumeController.cpp">
+    <ClCompile Include="pipeline\audio\VolumeController.cpp">
       <Filter>Audio</Filter>
     </ClCompile>
-    <ClCompile Include="Config\ConfigManager.cpp">
+    <ClCompile Include="config\ConfigManager.cpp">
       <Filter>Config</Filter>
     </ClCompile>
-    <ClCompile Include="Input\InputSource.cpp">
+    <ClCompile Include="pipeline\input\InputSource.cpp">
       <Filter>Input</Filter>
     </ClCompile>
-    <ClCompile Include="Input\CameraInput.cpp">
+    <ClCompile Include="pipeline\input\CameraInput.cpp">
       <Filter>Input</Filter>
     </ClCompile>
-    <ClCompile Include="Input\FileInput.cpp">
+    <ClCompile Include="pipeline\input\FileInput.cpp">
       <Filter>Input</Filter>
     </ClCompile>
-    <ClCompile Include="Input\NetworkInput.cpp">
+    <ClCompile Include="pipeline\input\NetworkInput.cpp">
       <Filter>Input</Filter>
     </ClCompile>
-    <ClCompile Include="Input\RTSPClient.cpp">
+    <ClCompile Include="legacy\RTSPClient.cpp">
       <Filter>Input</Filter>
     </ClCompile>
-    <ClCompile Include="Network\NetworkBuffer.cpp">
+    <ClCompile Include="streaming\NetworkBuffer.cpp">
       <Filter>Network</Filter>
     </ClCompile>
-    <ClCompile Include="Network\NetworkStatistics.cpp">
+    <ClCompile Include="streaming\NetworkStatistics.cpp">
       <Filter>Network</Filter>
     </ClCompile>
-    <ClCompile Include="Network\BufferController.cpp">
+    <ClCompile Include="streaming\BufferController.cpp">
       <Filter>Network</Filter>
     </ClCompile>
-    <ClCompile Include="Queue\PacketQueue.cpp">
+    <ClCompile Include="pipeline\queue\PacketQueue.cpp">
       <Filter>Queue</Filter>
     </ClCompile>
-    <ClCompile Include="Queue\FrameQueue.cpp">
+    <ClCompile Include="pipeline\queue\FrameQueue.cpp">
       <Filter>Queue</Filter>
     </ClCompile>
-    <ClCompile Include="Sync\AudioClock.cpp">
+    <ClCompile Include="sync\AudioClock.cpp">
       <Filter>Sync</Filter>
     </ClCompile>
-    <ClCompile Include="Sync\Clock.cpp">
+    <ClCompile Include="legacy\Clock.cpp">
       <Filter>Sync</Filter>
     </ClCompile>
-    <ClCompile Include="Sync\LiveClock.cpp">
+    <ClCompile Include="sync\LiveClock.cpp">
       <Filter>Sync</Filter>
     </ClCompile>
-    <ClCompile Include="Sync\SyncController.cpp">
+    <ClCompile Include="sync\SyncController.cpp">
       <Filter>Sync</Filter>
     </ClCompile>
-    <ClCompile Include="Seek\SeekController.cpp">
+    <ClCompile Include="features\seek\SeekController.cpp">
       <Filter>Seek</Filter>
     </ClCompile>
-    <ClCompile Include="Screenshot\ScreenshotManager.cpp">
+    <ClCompile Include="features\screenshot\ScreenshotManager.cpp">
       <Filter>Screenshot</Filter>
     </ClCompile>
-    <ClCompile Include="Statistics\PlayerStatistics.cpp">
+    <ClCompile Include="features\statistics\PlayerStatistics.cpp">
       <Filter>Statistics</Filter>
     </ClCompile>
-    <ClCompile Include="Subtitle\SubtitleManager.cpp">
+    <ClCompile Include="features\subtitle\SubtitleManager.cpp">
       <Filter>Subtitle</Filter>
     </ClCompile>
-    <ClCompile Include="Playlist\PlaylistManager.cpp">
+    <ClCompile Include="features\playlist\PlaylistManager.cpp">
       <Filter>Playlist</Filter>
     </ClCompile>
-    <ClCompile Include="Utils\ErrorHandler.cpp">
+    <ClCompile Include="infra\ErrorHandler.cpp">
       <Filter>Utils</Filter>
     </ClCompile>
-    <ClCompile Include="Utils\Logger.cpp">
+    <ClCompile Include="infra\Logger.cpp">
       <Filter>Utils</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Demuxer.h">
+    <ClInclude Include="pipeline\demux\Demuxer.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="Encoder\AudioEncoder.h">
+    <ClInclude Include="recording\AudioEncoder.h">
       <Filter>Encoder</Filter>
     </ClInclude>
-    <ClInclude Include="Encoder\VideoEncoder.h">
+    <ClInclude Include="recording\VideoEncoder.h">
       <Filter>Encoder</Filter>
     </ClInclude>
-    <ClInclude Include="Filter\AudioFilter.h">
+    <ClInclude Include="legacy\AudioFilter.h">
       <Filter>Filter</Filter>
     </ClInclude>
-    <ClInclude Include="Filter\FilterGraph.h">
+    <ClInclude Include="legacy\FilterGraph.h">
       <Filter>Filter</Filter>
     </ClInclude>
-    <ClInclude Include="Filter\VideoFilter.h">
+    <ClInclude Include="legacy\VideoFilter.h">
       <Filter>Filter</Filter>
     </ClInclude>
-    <ClInclude Include="Muxer\FLVMuxer.h">
+    <ClInclude Include="recording\FLVMuxer.h">
       <Filter>Muxer</Filter>
     </ClInclude>
-    <ClInclude Include="Muxer\HLSMuxer.h">
+    <ClInclude Include="recording\HLSMuxer.h">
       <Filter>Muxer</Filter>
     </ClInclude>
-    <ClInclude Include="Muxer\Muxer.h">
+    <ClInclude Include="recording\Muxer.h">
       <Filter>Muxer</Filter>
     </ClInclude>
-    <ClInclude Include="Hardware\CUDAContext.h">
+    <ClInclude Include="hardware\CUDAContext.h">
       <Filter>Hardware</Filter>
     </ClInclude>
-    <ClInclude Include="Hardware\HardwareDecoder.h">
+    <ClInclude Include="hardware\HardwareDecoder.h">
       <Filter>Hardware</Filter>
     </ClInclude>
-    <ClInclude Include="Network\StreamMonitor.h">
+    <ClInclude Include="streaming\StreamMonitor.h">
       <Filter>Network</Filter>
     </ClInclude>
-    <ClInclude Include="VideoDecoder.h">
+    <ClInclude Include="pipeline\video\VideoDecoder.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="Renderer.h">
+    <ClInclude Include="output\video\Renderer.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="Player.h">
+    <ClInclude Include="core\Player.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="PlayerState.h">
+    <ClInclude Include="core\PlayerState.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="Event.h">
+    <ClInclude Include="app\Event.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="FontManager.h">
+    <ClInclude Include="output\osd\FontManager.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="OSDManager.h">
+    <ClInclude Include="output\osd\OSDManager.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="AudioDecoder.h">
+    <ClInclude Include="pipeline\audio\AudioDecoder.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="AudioResampler.h">
+    <ClInclude Include="pipeline\audio\AudioResampler.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="AudioDevice.h">
+    <ClInclude Include="output\audio\AudioDevice.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="Audio\AudioSpeedController.h">
+    <ClInclude Include="pipeline\audio\AudioSpeedController.h">
       <Filter>Audio</Filter>
     </ClInclude>
-    <ClInclude Include="Audio\PCMQueue.h">
+    <ClInclude Include="pipeline\audio\PCMQueue.h">
       <Filter>Audio</Filter>
     </ClInclude>
-    <ClInclude Include="Audio\SpeedController.h">
+    <ClInclude Include="pipeline\audio\SpeedController.h">
       <Filter>Audio</Filter>
     </ClInclude>
-    <ClInclude Include="Audio\VolumeController.h">
+    <ClInclude Include="pipeline\audio\VolumeController.h">
       <Filter>Audio</Filter>
     </ClInclude>
-    <ClInclude Include="Config\ConfigManager.h">
+    <ClInclude Include="config\ConfigManager.h">
       <Filter>Config</Filter>
     </ClInclude>
-    <ClInclude Include="Config\PlayerConfig.h">
+    <ClInclude Include="config\PlayerConfig.h">
       <Filter>Config</Filter>
     </ClInclude>
-    <ClInclude Include="Config\StreamConfig.h">
+    <ClInclude Include="config\StreamConfig.h">
       <Filter>Config</Filter>
     </ClInclude>
-    <ClInclude Include="Input\InputSource.h">
+    <ClInclude Include="pipeline\input\InputSource.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Input\CameraInput.h">
+    <ClInclude Include="pipeline\input\CameraInput.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Input\FileInput.h">
+    <ClInclude Include="pipeline\input\FileInput.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Input\NetworkInput.h">
+    <ClInclude Include="pipeline\input\NetworkInput.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Input\RTSPClient.h">
+    <ClInclude Include="legacy\RTSPClient.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Network\NetworkBuffer.h">
+    <ClInclude Include="streaming\NetworkBuffer.h">
       <Filter>Network</Filter>
     </ClInclude>
-    <ClInclude Include="Network\NetworkStatistics.h">
+    <ClInclude Include="streaming\NetworkStatistics.h">
       <Filter>Network</Filter>
     </ClInclude>
-    <ClInclude Include="Network\BufferController.h">
+    <ClInclude Include="streaming\BufferController.h">
       <Filter>Network</Filter>
     </ClInclude>
-    <ClInclude Include="Queue\PacketQueue.h">
+    <ClInclude Include="pipeline\queue\PacketQueue.h">
       <Filter>Queue</Filter>
     </ClInclude>
-    <ClInclude Include="Queue\FrameQueue.h">
+    <ClInclude Include="pipeline\queue\FrameQueue.h">
       <Filter>Queue</Filter>
     </ClInclude>
-    <ClInclude Include="Sync\AudioClock.h">
+    <ClInclude Include="sync\AudioClock.h">
       <Filter>Sync</Filter>
     </ClInclude>
-    <ClInclude Include="Sync\Clock.h">
+    <ClInclude Include="legacy\Clock.h">
       <Filter>Sync</Filter>
     </ClInclude>
-    <ClInclude Include="Sync\LiveClock.h">
+    <ClInclude Include="sync\LiveClock.h">
       <Filter>Sync</Filter>
     </ClInclude>
-    <ClInclude Include="Sync\SyncController.h">
+    <ClInclude Include="sync\SyncController.h">
       <Filter>Sync</Filter>
     </ClInclude>
-    <ClInclude Include="Seek\SeekController.h">
+    <ClInclude Include="features\seek\SeekController.h">
       <Filter>Seek</Filter>
     </ClInclude>
-    <ClInclude Include="Screenshot\ScreenshotManager.h">
+    <ClInclude Include="features\screenshot\ScreenshotManager.h">
       <Filter>Screenshot</Filter>
     </ClInclude>
-    <ClInclude Include="Statistics\PlayerStatistics.h">
+    <ClInclude Include="features\statistics\PlayerStatistics.h">
       <Filter>Statistics</Filter>
     </ClInclude>
-    <ClInclude Include="Subtitle\SubtitleManager.h">
+    <ClInclude Include="features\subtitle\SubtitleManager.h">
       <Filter>Subtitle</Filter>
     </ClInclude>
-    <ClInclude Include="Playlist\PlaylistManager.h">
+    <ClInclude Include="features\playlist\PlaylistManager.h">
       <Filter>Playlist</Filter>
     </ClInclude>
-    <ClInclude Include="Utils\ErrorHandler.h">
+    <ClInclude Include="infra\ErrorHandler.h">
       <Filter>Utils</Filter>
     </ClInclude>
-    <ClInclude Include="Utils\FFmpegPtr.h">
+    <ClInclude Include="infra\FFmpegPtr.h">
       <Filter>Utils</Filter>
     </ClInclude>
-    <ClInclude Include="Utils\Logger.h">
+    <ClInclude Include="infra\Logger.h">
       <Filter>Utils</Filter>
     </ClInclude>
   </ItemGroup>
