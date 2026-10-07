@@ -71,3 +71,21 @@
 - **4.3 完成**（commit 见下）：搬队列 `videoPacketQueue/audioPacketQueue/videoNetBuffer/useNetBuffer/videoFrameQueue` + 派生状态 `duration/videoFrameDuration/hasAudioStream`（95 + 10 处改写）；
   `currentMediaPath`/`lastVideoDropped`/`lastAudioDropped` 实证未在 ReleaseMedia 复位，保留在 Player。
   警示：`duration` 重命名必须排除 `.`/`->` 前缀（否则会误伤 `pkt->duration`）。Debug/Release 0 error；三个样例 `--record`（12.8/22.7/141.8s）exit 0 且 FLV 合法。
+- **4.4 完成**（commit 见下）：新建 `core/PlaybackSession.{h,cpp}`，把**会话编排与线程**从 `Player` 抽出：
+  - 搬入的方法（14）：`OpenMedia`、`StartThreads`、`StopThreads`、`DemuxLoop`、`FlushVideoDecoder`、`SendVideoPacket`、
+    `ReceiveVideoFrame`、`TryInitHardwareDecoder`、`VideoDecodeLoop`、`AudioDecodeLoop`、`SwitchMedia`、`ReleaseMedia`、
+    `ProcessAudioFrame`、`AudioSeekCleanup`。（`GetFramePts`/`HasAudio` 留在 Player。）
+  - 搬入的成员：三线程 + `quit/demuxEof/videoEof/audioEof/audioAbort` + `seekPosition/seekPending/dropAudioUntil` +
+    `autoAdvancing` + `reconnectRequested/reconnectAttempts/currentMediaPath` + `switchRequested/switchPath`。
+  - **依赖注入而非转移所有权**：`MediaContext` 仍由 `Player` 持有（`std::unique_ptr<MediaContext> media`），
+    `PlaybackSession` 持 `MediaContext& media`（非拥有）+ 回指 `Player& owner`，`Player` 声明 `friend class PlaybackSession;`。
+    这样 `media->` 在会话内照写为 `media.`，避免对 Player 侧 ~283 处 `media->` 的机械改写。
+    新增 `std::unique_ptr<PlaybackSession> session;`（ctor 内 `make_unique<PlaybackSession>(*this, *media)`，紧跟在 `media` 之后声明，保证析构时 session 先于 media）。
+  - 代价：`Player::Run()`/`Close()` 对会话状态的访问改为 `session->xxx`（42 成员 + 9 方法引用），并在 `PlaybackSession.h` 用 `friend class Player;` 开放私有。
+  - 行数：`Player.h 673→534`（本次 634→534）、`Player.cpp 4651→3060`；`PlaybackSession.cpp` 1627 行。
+  - 工程：`core\PlaybackSession.h/.cpp` 已登记进 `FFmpeg_text_claw.vcxproj` + `.vcxproj.filters`。
+  - 实证坑（规则 3）：① `Player::Run()` 内有**局部变量 `quit`** 遮蔽同名成员 → 停留侧**不得**给 `quit` 加 `session->` 前缀；
+    ② 会话内是引用，故搬移块需把 `media->` 改 `media.`；③ 脚本用 latin1 写文件时，作者自撰注释**必须 ASCII**（写中文会被截字节，MSVC 报 `C1071 注释中遇到意外的文件结束`），搬移源码则保留原 GBK 字节。
+  - 验证：**Debug|x64 0 error / 32 warning**（基线 33；30 个 C4828 全来自既有 `FontManager.h`，2 个 C4244 为既有），**Release|x64 0 error / 32 warning**；
+    三个样例 `--record` 全部 `EXITED code=0`，FLV 时长 **12.833 / 22.655 / 141.8 s**（与 4.3 基线一致），日志无 ERROR/WARN，尾行 `Threads Stopped → State: Stopped → All outputs stopped → Closed → [Main] Exit`。
+  - 说明：日志尾出现两条 `[Player] Closed` 系 `main.cpp:297 player.Close()` 与 `~Player()` 各调一次（`Close()` 无幂等守卫），4.3 行为一致，非回归。

@@ -111,6 +111,9 @@
     <ClCompile Include="core\Player.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
+    <ClCompile Include="core\PlaybackSession.cpp">
+      <Filter>婧愭枃浠?/Filter>
+    </ClCompile>
     <ClCompile Include="app\Event.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
@@ -258,6 +261,9 @@
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
     <ClInclude Include="core\MediaContext.h">
+      <Filter>澶存枃浠?/Filter>
+    </ClInclude>
+    <ClInclude Include="core\PlaybackSession.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
     <ClInclude Include="app\Event.h">

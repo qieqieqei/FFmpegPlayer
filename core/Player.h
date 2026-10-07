@@ -41,6 +41,7 @@
 
 #include "core/PlayerState.h"
 #include "core/MediaContext.h"
+#include "core/PlaybackSession.h"
 #include "pipeline/demux/Demuxer.h"
 #include "pipeline/video/VideoDecoder.h"
 #include "pipeline/audio/AudioDecoder.h"
@@ -88,6 +89,8 @@ static constexpr int MAX_VIDEO_FRAMES  = 12;    // 视频帧队列上限
 
 class Player
 {
+
+    friend class PlaybackSession;
 
 public:
 
@@ -340,68 +343,11 @@ public:
 
 private:
 
-    // ---------- 线程 ----------
-
-    // 启动 Demux / Video / Audio 三个线程
-    bool StartThreads();
-
-    // 停止三个线程并等待结束（退出 / 切换媒体时调用）
-    void StopThreads();
-
-    // Demux 线程：读包分派 + Seek 执行
-    void DemuxLoop();
-
-    // Video 线程：视频包解码 -> 帧队列
-    void VideoDecodeLoop();
-
-    // Audio 线程：音频包解码 -> 重采样 -> 变速 -> PCM 队列
-    void AudioDecodeLoop();
-
-    // 切换到新媒体（停线程 -> 释放媒体 -> 重新初始化 -> 重启线程由调用方负责）
-    bool SwitchMedia(
-        const std::string& path);
-
-    // 打开媒体（首次初始化 / 播放列表切换共用）
-    bool OpenMedia(
-        const std::string& path);
-
-    // 释放媒体相关资源（保留 SDL 会话与字体/OSD/列表/字幕对象）
-    void ReleaseMedia();
-
-    // ---------- 音频（Audio 线程） ----------
-
-    // 处理一个音频帧（解码/重采样/变速/推送）
-    void ProcessAudioFrame(
-        AVFrame* frame);
-
-    // Seek 完成后的音频清理：清解码器/重采样器/变速器/时钟
-    void AudioSeekCleanup(
-        double target);
-
     // ---------- 工具 ----------
 
     // 取帧时间戳（秒）
     double GetFramePts(
         AVFrame* frame) const;
-
-    // ---------- 硬件解码（7.7） ----------
-
-    // 刷新当前激活的视频解码器（硬解优先）
-    void FlushVideoDecoder();
-
-    // 送包给当前激活的视频解码器
-    bool SendVideoPacket(
-        AVPacket* pkt);
-
-    // 从当前激活的解码器取帧（硬解时已拷回系统内存，可直接用）
-    // 8.4：解码结果三态可区分（评审七）
-    // Success 时 out 接管一帧（硬件模式已回读到系统内存）
-    DecodeResult ReceiveVideoFrame(
-        FramePtr& out);
-
-    // 尝试创建硬件解码器（配置开启 + CUDA 可用 + h264/hevc 时）
-    void TryInitHardwareDecoder(
-        AVCodecParameters* codecpar);
 
     // ---------- 输出链（7.4–7.6） ----------
 
@@ -448,6 +394,9 @@ private:
 
     // 媒体会话管线对象集合（随 OpenMedia/ReleaseMedia 重建）
     std::unique_ptr<MediaContext> media;
+
+    // Playback session (phase 4.4: threads / lifecycle / decode loops)
+    std::unique_ptr<PlaybackSession> session;
 
     // 音视频同步控制器（渲染线程）
     std::unique_ptr<SyncController> syncController;
@@ -526,27 +475,6 @@ private:
     // 播放列表管理器
     std::unique_ptr<PlaylistManager> playlistManager;
 
-    // 播放列表切换请求（渲染线程置位，Run 消费）
-    bool switchRequested = false;
-
-    std::string switchPath;
-
-    // ---------- 断网重连（8.3） ----------
-
-    std::string currentMediaPath;                    // 当前媒体路径（重连目标）
-
-    std::atomic<bool> reconnectRequested{ false };   // Demux 线程检测到断流后置位
-
-    std::atomic<int> reconnectAttempts{ 0 };         // 重连尝试计数
-
-    // ---------- 成员：线程 ----------
-
-    std::thread demuxThread;        // Demux 线程
-
-    std::thread videoThread;        // Video 线程
-
-    std::thread audioThread;        // Audio 线程
-
     // ---------- 成员：SDL 资源 ----------
 
     SDL_Window* window = nullptr;
@@ -598,34 +526,6 @@ private:
     bool fullscreen = false;
 
     bool frameStepRequest = false;
-
-    // ---------- 成员：线程间标志 ----------
-
-    // 退出标志（StopThreads 置位）
-    std::atomic<bool> quit{ false };
-
-    // Demux 是否已读到文件尾
-    std::atomic<bool> demuxEof{ false };
-
-    // 视频解码是否全部完成（含解码器冲刷）
-    std::atomic<bool> videoEof{ false };
-
-    // 音频解码是否全部完成（含解码器冲刷）
-    std::atomic<bool> audioEof{ false };
-
-    // 音频丢弃标志（Seek / 退出期间置位，让 PushPCM 立即返回）
-    std::atomic<bool> audioAbort{ false };
-
-    // Seek 状态（渲染线程）
-    double seekPosition = 0.0;             // 当前 Seek 目标（丢弃旧帧用）
-
-    bool seekPending = false;              // 是否还有未完成的 Seek
-
-    // 丢弃 Seek 目标之前的音频帧（pts 秒，<0 表示不丢弃；Audio 线程）
-    double dropAudioUntil = -1.0;
-
-    // 自动切下一首进行中（防止 EOF 状态反复触发）
-    bool autoAdvancing = false;
 
     // 上一帧副本（供截图 / EOF 显示）
     AVFramePtr lastFrame;
