@@ -128,6 +128,10 @@ private:
     void HandleReconnect(
         bool& quit);
 
+    // statistics refresh (phase 6.2, moved from Player; called by the
+    // render loop each frame).
+    void UpdateStatistics();
+
     // drop-count anchors for NetworkBuffer live stats (demux thread only)
 
     int64_t lastVideoDropped = 0;

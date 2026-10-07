@@ -1733,7 +1733,7 @@ void PlaybackSession::PresentFrame(
     owner.SetCurrentTime(pts);
 
     // update buffering statistics
-    owner.UpdateStatistics();
+    UpdateStatistics();
 
     // live buffer state transition notice (7.3): print once on entry
     // v2: buffer gate state sync (transition-driven, no per-frame toggle)
@@ -2059,7 +2059,7 @@ PlaybackSession::FrameAction PlaybackSession::AcquireAndSyncFrame(
                     << std::endl;
             }
 
-            owner.UpdateStatistics();
+            UpdateStatistics();
 
             SDL_Delay(10);
 
@@ -2297,4 +2297,203 @@ PlaybackSession::FrameAction PlaybackSession::AcquireAndSyncFrame(
     }
 
     return FrameAction::Present;
+}
+
+void PlaybackSession::UpdateStatistics()
+{
+    if (!owner.statistics)
+    {
+        return;
+    }
+
+    owner.statistics->UpdateBuffers(
+        GetVideoQueueSize(),           // 视频包缓冲（直播=NetworkBuffer�?
+        GetAudioQueueSize(),           // 音频包缓�?
+        media.videoFrameQueue.Size(),            // 视频帧缓�?
+        media.audioDevice ?
+            media.audioDevice->GetQueuedSize() : 0,   // 音频缓冲（字节）
+        48000,                             // 音频采样�?
+        2);                                // 音频声道
+
+    // 视频帧缓冲时长（毫秒）：帧数 * 帧间�?
+    owner.statistics->SetVideoBufferMs(
+        static_cast<int>(
+            media.videoFrameQueue.Size() *
+            media.videoFrameDuration *
+            1000.0));
+
+    // ---------- 网络缓冲监控�?.2 / 7.3�?----------
+
+    if (!owner.networkStatistics ||
+        !owner.bufferController)
+    {
+        return;
+    }
+
+    // 缓冲水位：包�?
+    owner.networkStatistics->SetBufferLevel(
+        GetVideoQueueSize(),
+        GetVideoQueueCapacity());
+
+    // 估算缓冲时长（毫秒）�?
+    //   视频：包�?* 帧时�?
+    //   音频：缓冲字�?/ (采样�?* 声道 * 2字节)
+    // v2: unified bufferedMs - min(video, audio)
+    //   video: live = NetworkBuffer::GetDurationMs() (PTS/time_base)
+    //          vod   = packet count * frame duration (legacy)
+    //   audio: PCM bytes / (actual sample_rate * channels * 2)
+    double videoMs;
+
+    // v2 Metrics: audio buffer ms at function scope
+    double audioMs = 0.0;
+
+    if (media.useNetBuffer)
+    {
+        videoMs =
+            static_cast<double>(
+                media.videoNetBuffer.GetDurationMs());
+    }
+    else
+    {
+        videoMs =
+            GetVideoQueueSize() *
+            media.videoFrameDuration *
+            1000.0;
+    }
+
+    double bufferedMs = videoMs;
+
+    if (media.audioDevice)
+    {
+        int sr = media.audioDevice->GetSampleRate();
+
+        int ch = media.audioDevice->GetChannels();
+
+        double bytesPerSec =
+            (sr > 0 && ch > 0) ?
+            sr * ch * 2.0 :
+            0.0;
+
+        double aclkSec =
+            media.audioDevice->GetAudioClock();
+
+        double backPtsSec =
+            media.useNetBuffer ?
+            media.videoNetBuffer.GetBackPts() :
+            -1.0;
+
+        if (media.useNetBuffer && backPtsSec > 0.0 && aclkSec > 0.0)
+        {
+            // v2: live audio buffer depth = how far the audio clock
+            // lags the push head (audio delayed by same backlog as
+            // video). PCM queue alone is a poor gauge in PLAYING:
+            // it stays near zero (instant FIFO) which drags
+            // buf=min(video,audio) to ~0 and forces rebuffer loops.
+            double lagMs =
+                (backPtsSec - aclkSec) * 1000.0;
+
+            audioMs = lagMs > 0.0 ? lagMs : 0.0;
+        }
+        else
+        {
+            audioMs =
+                (bytesPerSec > 0.0) ?
+                media.audioDevice->GetQueuedSize() *
+                    1000.0 / bytesPerSec :
+                0.0;
+        }
+
+        // min watermark: both sides must be ready before release;
+        // when audio is absent/empty (no audio stream or drained after
+        // stall), fall back to video to avoid deadlock where audioMs=0
+        // prevents reaching highWater forever
+        if (audioMs > 0.0)
+        {
+            bufferedMs =
+                videoMs < audioMs ?
+                videoMs :
+                audioMs;
+        }
+        else
+        {
+            bufferedMs = videoMs;
+        }
+    }
+
+    // 缓冲控制：水位决策（7.3�?
+    owner.bufferController->Update(
+        bufferedMs);
+
+    // 延迟估算：近似等于缓冲时长（真实端到端延迟需 RTCP，后续实现）
+    owner.networkStatistics->SetLatencyMs(
+        static_cast<int>(bufferedMs));
+
+    // 流媒体监控：仅网络流巡检（内部按 1s 节流�?
+    if (owner.streamMonitor &&
+        media.demuxer &&
+        media.demuxer->IsNetwork())
+    {
+        owner.streamMonitor->Tick();
+    }
+
+    // ---------- v2 Metrics锛氭瘡绉掍竴琛?----------
+    {
+        static Uint32 lastMetricsTick = 0;
+
+        Uint32 nowTick = SDL_GetTicks();
+
+        if (nowTick - lastMetricsTick >= 1000)
+        {
+            lastMetricsTick = nowTick;
+
+            const int netMs =
+                media.videoNetBuffer.GetDurationMs();
+
+            const int avSyncMs =
+                owner.syncController ?
+                owner.syncController->GetAvSyncMs() : 0;
+
+            const int latMs =
+                owner.networkStatistics ?
+                owner.networkStatistics->GetLatencyMs() : 0;
+
+            Logger::Info()
+                << "[Metrics] state="
+                << (owner.bufferController ?
+                    owner.bufferController->GetStateName() : "?")
+                << " net=" << netMs << "ms"
+                << " vid=" << static_cast<int>(videoMs) << "ms"
+                << " aud=" << static_cast<int>(audioMs) << "ms"
+                << " buf=" << static_cast<int>(bufferedMs) << "ms"
+                << " lat=" << latMs << "ms"
+                << " avsync=" << avSyncMs << "ms"
+                << " stall="
+                << (owner.bufferController ?
+                    owner.bufferController->GetStallCount() : 0)
+                << " underrun="
+                << (owner.bufferController ?
+                    owner.bufferController->GetUnderrunCount() : 0)
+                << " bufCnt="
+                << (owner.bufferController ?
+                    owner.bufferController->GetBufferingCount() : 0)
+                << "/"
+                << (owner.bufferController ?
+                    owner.bufferController->GetBufferingDurationMs() : 0)
+                << "ms"
+                << " dropPkt="
+                << (owner.networkStatistics ?
+                    owner.networkStatistics->GetDroppedPackets() : 0)
+                << " dropFrame="
+                << (owner.statistics ?
+                    owner.statistics->GetDroppedFrames() : 0)
+                << " lateDrop="
+                << (owner.syncController ?
+                    owner.syncController->GetDropCount() : 0)
+                << " fps="
+                << (owner.statistics ? owner.statistics->GetDecodeFPS() : 0.0)
+                << "/"
+                << (owner.statistics ? owner.statistics->GetFPS() : 0.0)
+                << std::endl;
+        }
+    }
 }

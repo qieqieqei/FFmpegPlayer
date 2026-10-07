@@ -312,8 +312,6 @@ public:
     // 8.4：网络流统计（直播：FPS / 码率 / 丢包率 / 缓冲水位）
     NetworkStatistics* GetNetworkStatistics() const;
 
-    // 更新统计信息（渲染循环每帧调用）
-    void UpdateStatistics();
 
 private:
 
