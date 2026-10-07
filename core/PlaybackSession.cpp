@@ -1772,3 +1772,184 @@ void PlaybackSession::PresentFrame(
             << std::endl;
     }
 }
+
+// ============================================================
+// Switch / reconnect orchestration (phase 5.4, moved from Player::Run)
+//
+// Both return with the caller continuing the render loop; they set
+// quit when the session cannot be restored.
+// ============================================================
+
+void PlaybackSession::HandleSwitchRequest(
+    bool& quit)
+{
+    std::string nextPath =
+        switchPath;
+
+    switchRequested = false;
+
+    Logger::Info()
+        << "[Player] Switch : "
+        << nextPath
+        << std::endl;
+
+    if (SwitchMedia(nextPath))
+    {
+        // 重启三线�?
+        if (!StartThreads())
+        {
+            quit = true;
+
+            return;
+        }
+
+        owner.state = PlayerState::Playing;
+
+        // v2: pre-buffer gate (see Run())
+        if (media.audioDevice &&
+            !(media.useNetBuffer &&
+                owner.bufferController &&
+                owner.bufferController->IsConsumingBlocked()))
+        {
+            media.audioDevice->SetPaused(false);
+        }
+
+        autoAdvancing = false;
+    }
+    else
+    {
+        ErrorHandler::Log(
+            ErrorTag::Player,
+            "Switch media failed");
+
+        quit = true;
+    }
+
+    return;
+}
+
+void PlaybackSession::HandleReconnect(
+    bool& quit)
+{
+    reconnectRequested.store(false);
+
+    Logger::Warn()
+        << "[Player] Network reconnect : "
+        << currentMediaPath
+        << std::endl;
+
+    // 循环重试直到成功 / 超限 / 退�?
+    // 注意：不�?this->quit——SwitchMedia 内部 StopThreads 会置位它
+    bool ok = false;
+
+    while (!ok && !quit)
+    {
+        // SwitchMedia：停线程 -> 释放 -> 重新打开
+        ok = SwitchMedia(currentMediaPath);
+
+        if (ok)
+        {
+            if (!StartThreads())
+            {
+                quit = true;
+
+                break;
+            }
+
+            owner.state = PlayerState::Playing;
+
+            // v2: pre-buffer gate (see Run())
+            if (media.audioDevice &&
+                !(media.useNetBuffer &&
+                    owner.bufferController &&
+                    owner.bufferController->IsConsumingBlocked()))
+            {
+                media.audioDevice->SetPaused(false);
+            }
+
+            reconnectAttempts.store(0);
+
+            // 重置停滞检测状态，避免误报
+            if (owner.streamMonitor)
+            {
+                owner.streamMonitor->Reset();
+            }
+
+            Logger::Info()
+                << "[Player] Reconnect success"
+                << std::endl;
+        }
+        else
+        {
+            int attempts =
+                reconnectAttempts
+                    .fetch_add(1) +
+                1;
+
+            StreamConfig cfg =
+                owner.configManager ?
+                owner.configManager->GetStreamConfig() :
+                StreamConfig();
+
+            int maxAttempts =
+                cfg.reconnectMaxAttempts;
+
+            int delayMs =
+                cfg.reconnectDelayMs;
+
+            // 8.4：可选指数退避（factor > 1.0 时开启）�?
+            // delay * factor^(attempts-1)，封�?30s�?
+            // 长时间断网避免高频重试打服务�?
+            if (cfg.reconnectBackoffFactor > 1.0)
+            {
+                double backoff =
+                    static_cast<double>(delayMs);
+
+                for (int i = 1;
+                    i < attempts;
+                    ++i)
+                {
+                    backoff *=
+                        cfg.reconnectBackoffFactor;
+                }
+
+                const double kMaxBackoffMs =
+                    30000.0;
+
+                if (backoff > kMaxBackoffMs)
+                {
+                    backoff = kMaxBackoffMs;
+                }
+
+                delayMs =
+                    static_cast<int>(backoff);
+            }
+
+            // maxAttempts <= 0：无限重试（24h 场景�?
+            if (maxAttempts > 0 &&
+                attempts >= maxAttempts)
+            {
+                ErrorHandler::Log(
+                    ErrorTag::Player,
+                    "Reconnect failed, give up");
+
+                // 停止播放，等待用户操�?
+                demuxEof.store(true);
+
+                break;
+            }
+
+            Logger::Warn()
+                << "[Player] Reconnect attempt "
+                << attempts
+                << " failed, retry in "
+                << delayMs
+                << " ms"
+                << std::endl;
+
+            SDL_Delay(delayMs);
+        }
+    }
+
+    return;
+}

@@ -107,6 +107,13 @@ private:
         bool& quit,
         bool& lastBufferingBlock);
 
+    // switch / reconnect orchestration (phase 5.4, moved from Player::Run)
+    void HandleSwitchRequest(
+        bool& quit);
+
+    void HandleReconnect(
+        bool& quit);
+
     // drop-count anchors for NetworkBuffer live stats (demux thread only)
 
     int64_t lastVideoDropped = 0;
