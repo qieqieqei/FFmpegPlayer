@@ -144,7 +144,7 @@ struct StatsSnapshot {
 - 填充点在 `PlaybackSession` 渲染路径：由 session 读 `statistics`/`networkStatistics`（core→L4 向下，合规）并**预先格式化**（含 `FormatBitrate`）。
 - **为何不能直接放 `PlayerStatistics*`/`NetworkStatistics*`**：`dependency.md §2` 矩阵中 `output → features` = ✗、`output → streaming` = ✗（`output` 仅允许 `infra/config/pipeline/sync`）。故必须转成纯值。
 
-### 3.3 `core → app` 拆除：输入处理改为**接口注入**
+### 3.3 `core → app` 拆除：输入处理改为**接口注入**（✅ 已实施，`01b3cf0`）
 
 `app`（L6）→ `core`（L5）允许；反向禁止。故在 **core 侧定义抽象**，由 app 实现并注入：
 
@@ -226,7 +226,7 @@ latin1 裸字节读写；`codeOnly()` 掩码后 `{}` 配对；先断言后**降�
 
 - **8.1（含 8.2 + 8.4 合并）— 完成（`985feec`）**：`Renderer`/`OSDManager` 去 `core/Player.h`；新增 `output/video/RenderContext.h`、`output/video/ControlBarState.h`、`output/osd/StatsSnapshot.h`；`Player::MakeRenderContext(AVFrame*)` 在 core 侧组装快照；`Player::ControlBarState` 改为 `using ControlBarState = ::ControlBarState;`（`uiBar`/`GetControlBar()` 保留）。**合并原因**：`Renderer` 去 `Player*` ⇒ `OSDManager` 必须同步去 `Player*`（`RenderOSD` 调 `osd->Update`），且 `Renderer` 需要 `ControlBarState`，三者互锁。行数：`Renderer.cpp` 705→685、`OSDManager.cpp` 444→437、`Player.h` 409→400、`Player.cpp` 1015→1184（+169 = `MakeRenderContext`）。验证：Debug/Release 0 error、FLV 字节一致、**真机像素 A/B 通过**（控制栏指标完全相同：图标白 476 / 蓝 306 / 轨道灰 9700；OSD 4318 vs 4328；标题字符串逐字相同）。
 - **8.2 — 已合并进 8.1**（`output/osd/StatsSnapshot.h` 纯值快照 + `OSDManager::Update(SDL_Renderer*, const StatsSnapshot&)`）。
-- **8.3 …**（待填）
+- **8.3 — 完成（`01b3cf0`）**：core 侧新增 `core/IInputHandler.h`（`struct IInputHandler { virtual ~IInputHandler() = default; virtual void HandleEvents(bool& quit) = 0; };`）；`Player::SetInputHandler(IInputHandler*)` + 成员 `IInputHandler* inputHandler`（非拥有）；两处轮询点改为 `if (inputHandler) inputHandler->HandleEvents(quit);`（`Player::Run` 与 `PlaybackSession::AcquireAndSyncFrame` 片等循环）——`PlaybackSession` 经 `friend` 读 `owner.inputHandler`；`app/Event.{h,cpp}` → `app/EventController.{h,cpp}`（`git mv`，`class EventController : public IInputHandler`，构造注入 `Player*`，键处理体**逐字节不动**）；`main.cpp` 在 `Run()` 前 `EventController eventController(&player); player.SetInputHandler(&eventController);`。顺带补齐 `vcxproj.filters` 中 8.1 的三个头文件条目。行数：`Player.h` 414→423、`Player.cpp` 1231→1238、`PlaybackSession.cpp` 2811→2812、`EventController.h` 24→37、`EventController.cpp` 368→373、`main.cpp` 335→344、`vcxproj` 267→268、`filters` 351→363、新 `IInputHandler.h` 19。**验证**：Debug/Release 0 error（warning 基线不变）；脚本抽查 `core/*` 无 `app/` include、`output/*` 无 `core/` include；**真机功能验证**：播放 ~6 s 后 `CloseMainWindow()` → SDL_QUIT → 注入的 `HandleEvents` 置 `quit` → `exit=0` + 日志 `[Main] Exit`（证明注入生效）；`--screenshot-at 5` 像素指标与 8.3 前完全一致（图标白 476 / 蓝 276 / 轨道灰 10165）；FLV 三件套字节不变。
 - **8.4 — 已合并进 8.1**（`ControlBarState` 移至 `output/video/ControlBarState.h`，不是 `app/ControlBar.h`：`app` 是 L6，`output` 引用它会形成反向依赖，**依赖矩阵优先于草稿**）。
 - **8.5 …**（待填）
 - **8.6 …**（待填）

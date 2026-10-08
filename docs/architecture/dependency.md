@@ -97,3 +97,20 @@
 2. 头文件级循环：保持为 0（每次迁移后重跑检测脚本）。
 3. 依赖矩阵中"✗"单元格：用脚本抽查（如 `output/*` 不得出现 `core/` 头）。
 4. 每步迁移后 `MSBuild Debug/x64` 退出码 0；阶段末 `Release/x64` 退出码 0。
+
+---
+
+## 5. 阶段 8 进展：反向依赖消解记录（滚动回填）
+
+| ID | 反向依赖点 | 消解方式 | 提交 | 结果 |
+|---|---|---|---|---|
+| 8.1/8.2/8.4 | `output/video/Renderer.cpp`、`output/osd/OSDManager.cpp` include `core/Player.h`（`Player*`） | 拆为纯数据 `RenderContext` / `StatsSnapshot`（+ `ControlBarState` 类型外移）；由 `Player::MakeRenderContext` 在 core 侧填充快照 | `985feec` | ✅ `output/*` 已无 `core/` include |
+| 8.3 | `core/Player.cpp`、`core/PlaybackSession.cpp` include `app/Event.h`；`app/Event.cpp` 直接依赖 `Player` 本体 | core 侧定义抽象 `core/IInputHandler.h`；`app/Event.{h,cpp}` → `app/EventController.{h,cpp}`（`class EventController : public IInputHandler`）；`main.cpp` 注入 `SetInputHandler()` | `01b3cf0` | ✅ `core/*` 已无 `app/` include；`app` 仅依赖 `core`（经接口） |
+
+- 现状核对（脚本抽查）：`core/*` 命中 `app/` include = **0**；`output/*`、`features/*`、`pipeline/*`、`sync/*`、`infra/*` 命中 `core/` include = **0**。
+- 遗留（待阶段 8.6 终审）：
+  1. `Player` 仍是“上帝对象”，`Init`/`LoadConfig`/`Close` 装配与 `Run()` 壳尚未搬入 `PlaybackSession`（8.5）→ `core/Player.cpp` 行数尚未降到 200~500。
+  2. `docs/architecture/dependency.md` §3 草案写的 `ControlBarState → app/ControlBar.h` 与矩阵冲突，实际落在 `output/video/ControlBarState.h`（以矩阵为准，见 `phase8-plan.md §3.4`）。
+  3. `SeekController`（features/seek）仍直接 include `pipeline` 具体类型（`Demuxer`/`PacketQueue`/`FrameQueue`）——矩阵中 `features→pipeline` 为 ✓，**当前判定为合规**，不做抽象。
+
+> `PlayerFacade` 命名：已于 2026-10-09 拍板**保留 `Player` 类名**（登记 `Player ≡ PlayerFacade`），不做全仓重命名。
