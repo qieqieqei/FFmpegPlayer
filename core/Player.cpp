@@ -38,57 +38,7 @@ Player::~Player()
 
 bool Player::LoadConfig()
 {
-    // 常驻：仅创建一�?
-    if (!configManager)
-    {
-        configManager =
-            std::make_unique<ConfigManager>();
-    }
-
-    if (!output)
-    {
-        output =
-            std::make_unique<OutputPipeline>(
-                configManager.get());
-    }
-
-    if (!configManager->Load("."))
-    {
-        Logger::Warn()
-            << "[Player] Config load failed, use defaults"
-            << std::endl;
-    }
-
-    const PlayerConfig& cfg =
-        configManager->GetPlayerConfig();
-
-    // ---------- 应用配置 ----------
-
-    // 播放速度�?.5 ~ 2.0�?
-    if (cfg.playbackSpeed > 0.1 &&
-        cfg.playbackSpeed <= 2.0)
-    {
-        playbackSpeed =
-            cfg.playbackSpeed;
-    }
-
-    // 音量�?~100�?
-    if (cfg.volume >= 0 &&
-        cfg.volume <= 100)
-    {
-        volume =
-            cfg.volume;
-    }
-
-    Logger::Info()
-        << "[Player] Config loaded : "
-        << "speed "
-        << playbackSpeed
-        << ", volume "
-        << volume
-        << std::endl;
-
-    return true;
+    return session->ApplyConfig();
 }
 
 ConfigManager* Player::GetConfigManager() const
@@ -122,35 +72,9 @@ void Player::SetScreenshotAt(
     double seconds,
     const std::string& path)
 {
-    screenshotAtSec =
-        seconds;
-
-    screenshotAtDone =
-        false;
-
-    if (path.empty())
-    {
-        std::ostringstream oss;
-
-        oss << "screenshot_at_"
-            << seconds
-            << "s.bmp";
-
-        screenshotAtPath =
-            oss.str();
-    }
-    else
-    {
-        screenshotAtPath =
-            path;
-    }
-
-    Logger::Info()
-        << "[Player] Auto screenshot at "
-        << seconds
-        << " s : "
-        << screenshotAtPath
-        << std::endl;
+    session->ConfigureScreenshot(
+        seconds,
+        path);
 }
 
 void Player::SetInputHandler(
@@ -225,19 +149,7 @@ const std::string& Player::GetCurrentPath() const
 
 void Player::ToggleSubtitle()
 {
-    if (!subtitleManager)
-    {
-        return;
-    }
-
-    subtitleManager->SetEnabled(
-        !subtitleManager->IsEnabled());
-
-    Logger::Info()
-        << "[Player] Subtitle : "
-        << (subtitleManager->IsEnabled() ?
-            "On" : "Off")
-        << std::endl;
+    session->ToggleSubtitleEnabled();
 }
 
 bool Player::IsSubtitleEnabled() const
@@ -259,50 +171,17 @@ void Player::RequestSeek(
 
 void Player::TogglePause()
 {
-    if (state == PlayerState::Playing)
-    {
-        Pause();
-    }
-    else if (state == PlayerState::Paused)
-    {
-        Resume();
-    }
+    session->TogglePausePlayback();
 }
 
 void Player::Pause()
 {
-    if (state == PlayerState::Playing ||
-        state == PlayerState::EndOfFile)
-    {
-        state = PlayerState::Paused;
-
-        // 暂停声卡（队列继续积压，管线自然停止�?
-        if (media->audioDevice)
-        {
-            media->audioDevice->SetPaused(true);
-        }
-
-        Logger::Info()
-            << "[Player] Paused"
-            << std::endl;
-    }
+    session->PausePlayback();
 }
 
 void Player::Resume()
 {
-    if (state == PlayerState::Paused)
-    {
-        state = PlayerState::Playing;
-
-        if (media->audioDevice)
-        {
-            media->audioDevice->SetPaused(false);
-        }
-
-        Logger::Info()
-            << "[Player] Playing"
-            << std::endl;
-    }
+    session->ResumePlayback();
 }
 
 PlayerState Player::GetState() const
@@ -312,23 +191,7 @@ PlayerState Player::GetState() const
 
 const char* Player::StateToString() const
 {
-    switch (state)
-    {
-    case PlayerState::Stopped:
-        return "Stopped";
-
-    case PlayerState::Playing:
-        return "Playing";
-
-    case PlayerState::Paused:
-        return "Paused";
-
-    case PlayerState::EndOfFile:
-        return "EndOfFile";
-
-    default:
-        return "Unknown";
-    }
+    return session->StateToString();
 }
 
 void Player::RequestFrameStep()
@@ -349,26 +212,7 @@ void Player::ClearFrameStepRequest()
 void Player::SetPlaybackSpeed(
     double speed)
 {
-    // 支持 0.5x / 1x / 1.5x / 2x
-    playbackSpeed = speed;
-
-    // 音频变速不变调（SOLA�?
-    if (media->speedController)
-    {
-        media->speedController->SetSpeed(speed);
-    }
-
-    // 音频主时钟按速度换算
-    if (media->audioDevice)
-    {
-        media->audioDevice->SetSpeedFactor(speed);
-    }
-
-    Logger::Info()
-        << "[Player] Speed : "
-        << playbackSpeed
-        << "x"
-        << std::endl;
+    session->ApplySpeed(speed);
 }
 
 double Player::GetPlaybackSpeed() const
@@ -379,23 +223,7 @@ double Player::GetPlaybackSpeed() const
 void Player::SetVolume(
     int percent)
 {
-    // 夹在 0~100
-    if (percent < 0)
-    {
-        percent = 0;
-    }
-
-    if (percent > 100)
-    {
-        percent = 100;
-    }
-
-    volume = percent;
-
-    if (media->audioDevice)
-    {
-        media->audioDevice->SetVolume(volume);
-    }
+    session->ApplyVolume(percent);
 }
 
 int Player::GetVolume() const
@@ -406,44 +234,12 @@ int Player::GetVolume() const
 void Player::TakeScreenshot(
     const std::string& format)
 {
-    if (!screenshotManager ||
-        !media->presenter.GetLastFrame())
-    {
-        ErrorHandler::Log(
-            ErrorTag::Screenshot,
-            "No frame available");
-
-        return;
-    }
-
-    screenshotManager->SaveFrame(
-        media->presenter.GetLastFrame(),
-        format);
+    session->CaptureScreenshot(format);
 }
 
 void Player::ToggleFullScreen()
 {
-    if (!media->presenter.GetWindow())
-    {
-        return;
-    }
-
-    fullscreen = !fullscreen;
-
-    if (fullscreen)
-    {
-        media->presenter.ApplyFullscreen(true);
-    }
-    else
-    {
-        media->presenter.ApplyFullscreen(false);
-    }
-
-    RenderContext renderCtx =
-        session->BuildRenderContext(nullptr);
-
-    UpdateWindowTitle(
-        renderCtx);
+    session->ToggleFullScreenMode();
 }
 
 bool Player::IsFullScreen() const
@@ -501,77 +297,18 @@ double Player::GetProgress() const
 
 std::string Player::GetTimeString() const
 {
-    int totalMs =
-        static_cast<int>(currentTime * 1000.0);
-
-    int hours =
-        totalMs / 3600000;
-
-    int minutes =
-        (totalMs % 3600000) / 60000;
-
-    int seconds =
-        (totalMs % 60000) / 1000;
-
-    int millis =
-        totalMs % 1000;
-
-    std::ostringstream oss;
-
-    oss
-        << std::setfill('0')
-        << std::setw(2)
-        << hours
-        << ":"
-        << std::setw(2)
-        << minutes
-        << ":"
-        << std::setw(2)
-        << seconds
-        << "."
-        << std::setw(3)
-        << millis;
-
-    return oss.str();
+    return session->FormatTimeString();
 }
 
 std::string Player::GetDurationString() const
 {
-    int hour =
-        static_cast<int>(media->duration) / 3600;
-
-    int minute =
-        (static_cast<int>(media->duration) % 3600) / 60;
-
-    int second =
-        static_cast<int>(media->duration) % 60;
-
-    char buffer[32];
-
-    sprintf_s(
-        buffer,
-        "%02d:%02d:%02d",
-        hour,
-        minute,
-        second);
-
-    return std::string(buffer);
+    return session->FormatDurationString();
 }
 
 void Player::SetCurrentTime(
     double time)
 {
-    currentTime = time;
-
-    if (media->duration > 0.0)
-    {
-        progress =
-            currentTime / media->duration;
-    }
-    else
-    {
-        progress = 0.0;
-    }
+    session->SetPlaybackTime(time);
 }
 
 // ============================================================
@@ -591,24 +328,12 @@ void Player::SetAutoQuitOnEof(
 
 int Player::GetVideoWidth() const
 {
-    if (!media->videoDecoder ||
-        !media->videoDecoder->GetContext())
-    {
-        return 0;
-    }
-
-    return media->videoDecoder->GetContext()->width;
+    return session->GetVideoWidth();
 }
 
 int Player::GetVideoHeight() const
 {
-    if (!media->videoDecoder ||
-        !media->videoDecoder->GetContext())
-    {
-        return 0;
-    }
-
-    return media->videoDecoder->GetContext()->height;
+    return session->GetVideoHeight();
 }
 
 SwsContext* Player::GetSwsForFrame(
@@ -649,9 +374,7 @@ PlayerStatistics* Player::GetStatistics() const
 
 bool Player::IsHardwareDecode() const
 {
-    return media->hwDecoder &&
-        media->hwDecoder->IsReady() &&
-        media->hwDecoder->IsHardware();
+    return session->IsHardwareDecode();
 }
 
 NetworkStatistics* Player::GetNetworkStatistics() const
@@ -767,36 +490,7 @@ bool Player::IsHLSActive() const
 double Player::GetFramePts(
     AVFrame* frame) const
 {
-    if (!frame)
-    {
-        return 0.0;
-    }
-
-    // 优先�?best_effort_timestamp
-    int64_t ts =
-        frame->best_effort_timestamp;
-
-    if (ts == AV_NOPTS_VALUE)
-    {
-        ts = frame->pts;
-    }
-
-    if (ts == AV_NOPTS_VALUE)
-    {
-        return 0.0;
-    }
-
-    AVStream* vStream =
-        media->demuxer ?
-        media->demuxer->GetVideoStream() :
-        nullptr;
-
-    if (!vStream)
-    {
-        return 0.0;
-    }
-
-    return ts * av_q2d(vStream->time_base);
+    return session->GetFramePts(frame);
 }
 
 bool Player::HasAudio() const

@@ -56,6 +56,34 @@ public:
 
     void Shutdown();
 
+    // playback control / utility (phase 8.5c, moved from Player; Player
+    // keeps thin facade forwarders so app/main call sites are unchanged)
+    bool ApplyConfig();
+    void ToggleSubtitleEnabled();
+    void TogglePausePlayback();
+    void PausePlayback();
+    void ResumePlayback();
+    const char* StateToString() const;
+    void ApplySpeed(
+        double speed);
+    void ApplyVolume(
+        int percent);
+    void CaptureScreenshot(
+        const std::string& format);
+    void ToggleFullScreenMode();
+    std::string FormatTimeString() const;
+    std::string FormatDurationString() const;
+    void SetPlaybackTime(
+        double time);
+    int GetVideoWidth() const;
+    int GetVideoHeight() const;
+    bool IsHardwareDecode() const;
+    double GetFramePts(
+        AVFrame* frame) const;
+    void ConfigureScreenshot(
+        double seconds,
+        const std::string& path);
+
     // main loop (phase 8.5b, moved from Player::Run; Player::Run is now a
     // thin facade forwarder so app/main call sites stay unchanged)
     bool RunLoop();

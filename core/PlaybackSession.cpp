@@ -3263,3 +3263,412 @@ const std::string& PlaybackSession::GetCurrentPath() const
         owner.playlistManager->GetCurrent() :
         empty;
 }
+
+// ============================================================
+// playback control / utility (phase 8.5c: moved from Player)
+// ============================================================
+
+bool PlaybackSession::ApplyConfig()
+{
+    // 常驻：仅创建一�?
+    if (!owner.configManager)
+    {
+        owner.configManager =
+            std::make_unique<ConfigManager>();
+    }
+
+    if (!owner.output)
+    {
+        owner.output =
+            std::make_unique<OutputPipeline>(
+                owner.configManager.get());
+    }
+
+    if (!owner.configManager->Load("."))
+    {
+        Logger::Warn()
+            << "[Player] Config load failed, use defaults"
+            << std::endl;
+    }
+
+    const PlayerConfig& cfg =
+        owner.configManager->GetPlayerConfig();
+
+    // ---------- 应用配置 ----------
+
+    // 播放速度�?.5 ~ 2.0�?
+    if (cfg.playbackSpeed > 0.1 &&
+        cfg.playbackSpeed <= 2.0)
+    {
+        owner.playbackSpeed =
+            cfg.playbackSpeed;
+    }
+
+    // 音量�?~100�?
+    if (cfg.volume >= 0 &&
+        cfg.volume <= 100)
+    {
+        owner.volume =
+            cfg.volume;
+    }
+
+    Logger::Info()
+        << "[Player] Config loaded : "
+        << "speed "
+        << owner.playbackSpeed
+        << ", owner.volume "
+        << owner.volume
+        << std::endl;
+
+    return true;
+}
+
+void PlaybackSession::ToggleSubtitleEnabled()
+{
+    if (!owner.subtitleManager)
+    {
+        return;
+    }
+
+    owner.subtitleManager->SetEnabled(
+        !owner.subtitleManager->IsEnabled());
+
+    Logger::Info()
+        << "[Player] Subtitle : "
+        << (owner.subtitleManager->IsEnabled() ?
+            "On" : "Off")
+        << std::endl;
+}
+
+void PlaybackSession::TogglePausePlayback()
+{
+    if (owner.state == PlayerState::Playing)
+    {
+        owner.Pause();
+    }
+    else if (owner.state == PlayerState::Paused)
+    {
+        owner.Resume();
+    }
+}
+
+void PlaybackSession::PausePlayback()
+{
+    if (owner.state == PlayerState::Playing ||
+        owner.state == PlayerState::EndOfFile)
+    {
+        owner.state = PlayerState::Paused;
+
+        // 暂停声卡（队列继续积压，管线自然停止�?
+        if (media.audioDevice)
+        {
+            media.audioDevice->SetPaused(true);
+        }
+
+        Logger::Info()
+            << "[Player] Paused"
+            << std::endl;
+    }
+}
+
+void PlaybackSession::ResumePlayback()
+{
+    if (owner.state == PlayerState::Paused)
+    {
+        owner.state = PlayerState::Playing;
+
+        if (media.audioDevice)
+        {
+            media.audioDevice->SetPaused(false);
+        }
+
+        Logger::Info()
+            << "[Player] Playing"
+            << std::endl;
+    }
+}
+
+const char* PlaybackSession::StateToString() const
+{
+    switch (owner.state)
+    {
+    case PlayerState::Stopped:
+        return "Stopped";
+
+    case PlayerState::Playing:
+        return "Playing";
+
+    case PlayerState::Paused:
+        return "Paused";
+
+    case PlayerState::EndOfFile:
+        return "EndOfFile";
+
+    default:
+        return "Unknown";
+    }
+}
+
+void PlaybackSession::ApplySpeed(
+    double speed)
+{
+    // 支持 0.5x / 1x / 1.5x / 2x
+    owner.playbackSpeed = speed;
+
+    // 音频变速不变调（SOLA�?
+    if (media.speedController)
+    {
+        media.speedController->SetSpeed(speed);
+    }
+
+    // 音频主时钟按速度换算
+    if (media.audioDevice)
+    {
+        media.audioDevice->SetSpeedFactor(speed);
+    }
+
+    Logger::Info()
+        << "[Player] Speed : "
+        << owner.playbackSpeed
+        << "x"
+        << std::endl;
+}
+
+void PlaybackSession::ApplyVolume(
+    int percent)
+{
+    // 夹在 0~100
+    if (percent < 0)
+    {
+        percent = 0;
+    }
+
+    if (percent > 100)
+    {
+        percent = 100;
+    }
+
+    owner.volume = percent;
+
+    if (media.audioDevice)
+    {
+        media.audioDevice->SetVolume(owner.volume);
+    }
+}
+
+void PlaybackSession::CaptureScreenshot(
+    const std::string& format)
+{
+    if (!owner.screenshotManager ||
+        !media.presenter.GetLastFrame())
+    {
+        ErrorHandler::Log(
+            ErrorTag::Screenshot,
+            "No frame available");
+
+        return;
+    }
+
+    owner.screenshotManager->SaveFrame(
+        media.presenter.GetLastFrame(),
+        format);
+}
+
+void PlaybackSession::ToggleFullScreenMode()
+{
+    if (!media.presenter.GetWindow())
+    {
+        return;
+    }
+
+    owner.fullscreen = !owner.fullscreen;
+
+    if (owner.fullscreen)
+    {
+        media.presenter.ApplyFullscreen(true);
+    }
+    else
+    {
+        media.presenter.ApplyFullscreen(false);
+    }
+
+    RenderContext renderCtx =
+        BuildRenderContext(nullptr);
+
+    UpdateWindowTitle(
+        renderCtx);
+}
+
+std::string PlaybackSession::FormatTimeString() const
+{
+    int totalMs =
+        static_cast<int>(owner.currentTime * 1000.0);
+
+    int hours =
+        totalMs / 3600000;
+
+    int minutes =
+        (totalMs % 3600000) / 60000;
+
+    int seconds =
+        (totalMs % 60000) / 1000;
+
+    int millis =
+        totalMs % 1000;
+
+    std::ostringstream oss;
+
+    oss
+        << std::setfill('0')
+        << std::setw(2)
+        << hours
+        << ":"
+        << std::setw(2)
+        << minutes
+        << ":"
+        << std::setw(2)
+        << seconds
+        << "."
+        << std::setw(3)
+        << millis;
+
+    return oss.str();
+}
+
+std::string PlaybackSession::FormatDurationString() const
+{
+    int hour =
+        static_cast<int>(media.duration) / 3600;
+
+    int minute =
+        (static_cast<int>(media.duration) % 3600) / 60;
+
+    int second =
+        static_cast<int>(media.duration) % 60;
+
+    char buffer[32];
+
+    sprintf_s(
+        buffer,
+        "%02d:%02d:%02d",
+        hour,
+        minute,
+        second);
+
+    return std::string(buffer);
+}
+
+void PlaybackSession::SetPlaybackTime(
+    double time)
+{
+    owner.currentTime = time;
+
+    if (media.duration > 0.0)
+    {
+        owner.progress =
+            owner.currentTime / media.duration;
+    }
+    else
+    {
+        owner.progress = 0.0;
+    }
+}
+
+int PlaybackSession::GetVideoWidth() const
+{
+    if (!media.videoDecoder ||
+        !media.videoDecoder->GetContext())
+    {
+        return 0;
+    }
+
+    return media.videoDecoder->GetContext()->width;
+}
+
+int PlaybackSession::GetVideoHeight() const
+{
+    if (!media.videoDecoder ||
+        !media.videoDecoder->GetContext())
+    {
+        return 0;
+    }
+
+    return media.videoDecoder->GetContext()->height;
+}
+
+bool PlaybackSession::IsHardwareDecode() const
+{
+    return media.hwDecoder &&
+        media.hwDecoder->IsReady() &&
+        media.hwDecoder->IsHardware();
+}
+
+double PlaybackSession::GetFramePts(
+    AVFrame* frame) const
+{
+    if (!frame)
+    {
+        return 0.0;
+    }
+
+    // 优先�?best_effort_timestamp
+    int64_t ts =
+        frame->best_effort_timestamp;
+
+    if (ts == AV_NOPTS_VALUE)
+    {
+        ts = frame->pts;
+    }
+
+    if (ts == AV_NOPTS_VALUE)
+    {
+        return 0.0;
+    }
+
+    AVStream* vStream =
+        media.demuxer ?
+        media.demuxer->GetVideoStream() :
+        nullptr;
+
+    if (!vStream)
+    {
+        return 0.0;
+    }
+
+    return ts * av_q2d(vStream->time_base);
+}
+
+void PlaybackSession::ConfigureScreenshot(
+    double seconds,
+    const std::string& path)
+{
+    owner.screenshotAtSec =
+        seconds;
+
+    owner.screenshotAtDone =
+        false;
+
+    if (path.empty())
+    {
+        std::ostringstream oss;
+
+        oss << "screenshot_at_"
+            << seconds
+            << "s.bmp";
+
+        owner.screenshotAtPath =
+            oss.str();
+    }
+    else
+    {
+        owner.screenshotAtPath =
+            path;
+    }
+
+    Logger::Info()
+        << "[Player] Auto screenshot at "
+        << seconds
+        << " s : "
+        << owner.screenshotAtPath
+        << std::endl;
+}
