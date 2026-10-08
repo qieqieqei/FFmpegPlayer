@@ -322,9 +322,6 @@ private:
     double GetFramePts(
         AVFrame* frame) const;
 
-    // phase 8.1: build the read-only render snapshot for output/video
-    RenderContext MakeRenderContext(
-        AVFrame* frame);
     // 更新当前播放时间 / 进度
     void SetCurrentTime(
         double time);

@@ -197,6 +197,298 @@ void PlaybackSession::Shutdown()
     owner.playlistManager.reset();
 }
 
+// ============================================================
+// main loop + render snapshot (phase 8.5b: moved from
+// Player::Run / Player::MakeRenderContext)
+// ============================================================
+
+bool PlaybackSession::RunLoop()
+{
+    // 启动 Demux / Video / Audio 三个线程
+    if (!StartThreads())
+    {
+        return false;
+    }
+
+    owner.state = PlayerState::Playing;
+
+    // v2: live pre-buffer - keep audio paused until watermark reached
+    // (gate in render loop releases it once via state-change, not per-frame)
+    if (media.audioDevice &&
+        !(media.useNetBuffer &&
+            owner.bufferController &&
+            owner.bufferController->IsConsumingBlocked()))
+    {
+        media.audioDevice->SetPaused(false);
+    }
+
+    Logger::Info()
+        << "[Player] State : "
+        << owner.StateToString()
+        << std::endl;
+
+    bool quit = false;
+
+    // v2: buffer gate state latch (only act on transitions)
+    bool lastBufferingBlock = false;
+
+    while (!quit)
+    {
+        // ---------- 事件处理 ----------
+
+        if (owner.inputHandler)
+        {
+            owner.inputHandler->HandleEvents(
+                quit);
+        }
+
+        // ---------- 播放列表切换请求（`[` / `]`�?----------
+
+        if (switchRequested)
+        {
+            HandleSwitchRequest(quit);
+
+            continue;
+        }
+
+        // ---------- 断网重连�?.3）：Demux 线程检测到断流 ----------
+
+        if (reconnectRequested.load())
+        {
+            HandleReconnect(quit);
+
+            continue;
+        }
+
+        // ---------- 字幕更新（查询当前文本） ----------
+
+        if (owner.subtitleManager &&
+            owner.osdManager)
+        {
+            owner.osdManager->SetSubtitle(
+                media.presenter.GetRenderer(),
+                owner.subtitleManager->GetTextAt(
+                    owner.GetCurrentTime()));
+        }
+
+        // ---------- frame acquisition + A/V sync (phase 5.3b: moved to PlaybackSession::AcquireAndSyncFrame) ----------
+
+        FramePtr frame;
+        double pts = 0.0;
+
+        if (AcquireAndSyncFrame(
+                frame,
+                pts,
+                quit,
+                lastBufferingBlock) ==
+            PlaybackSession::FrameAction::Skip)
+        {
+            continue;
+        }
+
+        // render (phase 5.3: moved to PlaybackSession::PresentFrame)
+
+        PresentFrame(
+            frame.get(),
+            pts,
+            quit,
+            lastBufferingBlock);
+    }
+
+    // ---------- 退出清�?----------
+
+    Logger::Info()
+        << "[Player] Quit loop, stopping threads..."
+        << std::endl;
+
+    audioAbort.store(true);
+
+    StopThreads();
+
+    owner.state = PlayerState::Stopped;
+
+    Logger::Info()
+        << "[Player] State : "
+        << owner.StateToString()
+        << std::endl;
+
+    return true;
+}
+
+RenderContext PlaybackSession::BuildRenderContext(
+    AVFrame* frame)
+{
+    RenderContext ctx;
+
+    ctx.window =
+        media.presenter.GetWindow();
+
+    ctx.renderer =
+        media.presenter.GetRenderer();
+
+    ctx.texture =
+        media.presenter.GetTexture();
+
+    ctx.sws =
+        frame ? owner.GetSwsForFrame(frame) : nullptr;
+
+    ctx.rgbData =
+        owner.GetRGBData();
+
+    ctx.rgbLinesize =
+        owner.GetRGBLinesize();
+
+    ctx.rgbTexture =
+        owner.GetRGBTexture();
+
+    ctx.videoWidth =
+        owner.GetVideoWidth();
+
+    ctx.videoHeight =
+        owner.GetVideoHeight();
+
+    // title label (same mapping the Renderer used to do locally)
+    switch (owner.GetState())
+    {
+    case PlayerState::Playing:
+        ctx.stateText = "Playing";
+        break;
+
+    case PlayerState::Paused:
+        ctx.stateText = "Paused";
+        break;
+
+    case PlayerState::EndOfFile:
+        ctx.stateText = "EOF";
+        break;
+
+    default:
+        ctx.stateText = "Stopped";
+        break;
+    }
+
+    ctx.paused =
+        (owner.GetState() == PlayerState::Paused);
+
+    ctx.fullscreen =
+        owner.fullscreen;
+
+    ctx.fullScreenText =
+        owner.FullScreenToString();
+
+    ctx.speed =
+        owner.GetPlaybackSpeed();
+
+    ctx.progress =
+        owner.GetProgress();
+
+    ctx.duration =
+        owner.GetDuration();
+
+    ctx.volume =
+        owner.GetVolume();
+
+    ctx.timeString =
+        owner.GetTimeString();
+
+    ctx.durationString =
+        owner.GetDurationString();
+
+    ctx.osd =
+        owner.osdManager.get();
+
+    ctx.bar =
+        &owner.uiBar;
+
+    // ---------- OSD statistics snapshot (phase 8.2) ----------
+
+    ctx.stats.stateText =
+        owner.StateToString();
+
+    ctx.stats.timeString =
+        ctx.timeString;
+
+    ctx.stats.durationString =
+        ctx.durationString;
+
+    ctx.stats.hardwareDecode =
+        owner.IsHardwareDecode();
+
+    ctx.stats.speed =
+        ctx.speed;
+
+    ctx.stats.volume =
+        ctx.volume;
+
+    if (owner.statistics)
+    {
+        ctx.stats.hasStats = true;
+
+        ctx.stats.resolution =
+            owner.statistics->GetResolution();
+
+        ctx.stats.videoCodec =
+            owner.statistics->GetVideoCodec();
+
+        ctx.stats.audioCodec =
+            owner.statistics->GetAudioCodec();
+
+        ctx.stats.nominalFps =
+            owner.statistics->GetNominalFPS();
+
+        ctx.stats.decodeFps =
+            owner.statistics->GetDecodeFPS();
+
+        ctx.stats.renderFps =
+            owner.statistics->GetFPS();
+
+        ctx.stats.bitrateText =
+            PlayerStatistics::FormatBitrate(
+                owner.statistics->GetBitrate());
+
+        ctx.stats.videoFrames =
+            owner.statistics->GetVideoFrames();
+
+        ctx.stats.videoBufferMs =
+            owner.statistics->GetVideoBufferMs();
+
+        ctx.stats.audioBufferMs =
+            owner.statistics->GetAudioBufferMs();
+
+        ctx.stats.videoPackets =
+            owner.statistics->GetVideoPackets();
+
+        ctx.stats.audioPackets =
+            owner.statistics->GetAudioPackets();
+
+        ctx.stats.droppedFrames =
+            owner.statistics->GetDroppedFrames();
+    }
+
+    if (owner.networkStatistics)
+    {
+        ctx.stats.hasNetwork = true;
+
+        ctx.stats.networkText =
+            owner.networkStatistics->ToString();
+    }
+
+    // ---------- auto screenshot (--screenshot-at) ----------
+
+    if (frame &&
+        owner.screenshotAtSec >= 0.0 &&
+        !owner.screenshotAtDone &&
+        owner.GetCurrentTime() >= owner.screenshotAtSec)
+    {
+        owner.screenshotAtDone = true;
+
+        ctx.capturePath =
+            owner.screenshotAtPath.c_str();
+    }
+
+    return ctx;
+}
+
 bool PlaybackSession::OpenMedia(
     const std::string& path)
 {
@@ -1920,7 +2212,7 @@ void PlaybackSession::PresentFrame(
     // ---------- render ----------
 
     RenderContext renderCtx =
-        owner.MakeRenderContext(frame);
+        BuildRenderContext(frame);
 
     RenderFrame(
         frame,

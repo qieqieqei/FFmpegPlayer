@@ -21,6 +21,7 @@
 #include <thread>
 
 #include "core/MediaContext.h"
+#include "output/video/RenderContext.h"
 
 class Player;
 
@@ -54,6 +55,10 @@ public:
         const char* filename);
 
     void Shutdown();
+
+    // main loop (phase 8.5b, moved from Player::Run; Player::Run is now a
+    // thin facade forwarder so app/main call sites stay unchanged)
+    bool RunLoop();
 
     // ---- packet queue routing (phase 5.1, moved from Player) ----
 
@@ -147,6 +152,10 @@ private:
         double& pts,
         bool& quit,
         bool& lastBufferingBlock);
+
+    // render snapshot (phase 8.5b, moved from Player::MakeRenderContext)
+    RenderContext BuildRenderContext(
+        AVFrame* frame);
 
     // Present one decoded frame (phase 5.3): render + render stats +
     // screenshot snapshot + time/progress + buffer-gate transition.
