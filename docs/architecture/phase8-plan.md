@@ -218,7 +218,7 @@ latin1 裸字节读写；`codeOnly()` 掩码后 `{}` 配对；先断言后**降�
 - **8.5 生命周期风险**：`unique_ptr` 成员在 `Player` 与 `PlaybackSession` 间搬移 → 关注**析构顺序**（`output` 必须在 `configManager` 之前析构）；出现双击释放/悬垂 → **停止并报告**。
 - 事件路径（8.3）若出现按键失效/重复响应 → 回滚并复核 `HandleEvents` 调用频率（应在每帧渲染循环内恰好一次）。
 - 编译错误无法定位 / 死锁 / 循环依赖 → **停止并报告**。
-- **命名收口待拍板**：是否把 `Player` 改名为 `PlayerFacade`（`target-architecture.md §2`）？全仓重命名噪声大、行为零收益 → **建议保留 `Player` 类名，在文档登记 `Player ≡ PlayerFacade`**，除非明确要求改名。
+- **命名收口（已拍板 2026-10-09）**：**保留 `Player` 类名，不改名 `PlayerFacade`**（用户决定）。仅在文档登记 `Player ≡ PlayerFacade`（`target-architecture.md §2`）。
 
 ---
 
