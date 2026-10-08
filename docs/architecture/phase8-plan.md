@@ -202,8 +202,11 @@ latin1 裸字节读写；`codeOnly()` 掩码后 `{}` 配对；先断言后**降�
 
 1. 每子步 `MSBuild Debug|x64` → **0 error**；`Release|x64` → 0 error（warning 基线：Release Rebuild 43 / 增量 ~7~32，均为既有 C4828×5 + C4244×2）。
 2. 回归三件套（每子步至少跑一次）：三样例 `--record` FLV 字节 **7280913 / 9666764 / 59694920**、时长 **12.833 / 22.655 / 141.800** s、ERROR/WARN = 0。
-3. **⚠️ 渲染/OSD/控制栏改动（8.1/8.2/8.4）无法被 FLV 回归覆盖** → 必须另做**视觉核对**：真机启动播放，按 `S`/`J` 截图留档，人工比对窗口标题、OSD 文案、控制栏按钮/进度条/拖动。
-   （若时间允许，新增一个 `--screenshot-at <sec>` CLI 或 `day8_probe` 把「启动 → 播放 N 秒 → 截图 → 退出」自动化。）
+3. **⚠️ 渲染/OSD/控制栏改动（8.1/8.2/8.4）无法被 FLV 回归覆盖** → 必须另做**视觉核对**。
+   ✅ **已自动化（2026-10-09，提交 `c6403a6`）**：项目新增 CLI `--screenshot-at <sec> [--screenshot-file out.bmp]` —— 播到指定时刻由 `Renderer` 在 `SDL_RenderPresent` 之前用 `SDL_RenderReadPixels` 把**合成画面**（视频 + OSD + 控制栏）读回写 24 位 BMP（默认名 `screenshot_at_<sec>s.bmp`）。
+   核对方式：跑一次 `--screenshot-at 5` → 用 Python/Pillow 统计像素指标（OSD 区近白文字数、控制栏图标白像素数、进度蓝像素数、轨道灰、视频色桶数），与旧构建 / 理论值对比。
+   实测（2026-10-09）：图标白像素 **476**（与真机屏抓完全相同）、OSD 近白 **4312 vs 4318**（差 0.14%）、进度蓝像素随播放位置线性（1280 宽窗口：3 s→1542、10 s→5208，理论 1577/5255）。
+   （另有配套脚本：`workspace/.tmp_shot_test.ps1`、`.tmp_shot_test2.ps1`、`.tmp_bmp_px.py`；真机屏抓旧法为 `.tmp_vis81.ps1` + `.tmp_vis81_px.py`，但 `SendKeys` 对 SDL 窗口不可靠，已改由上法。）
 4. 依赖验收（`dependency.md §4`）：脚本抽查 —— `output/*`、`features/*`、`pipeline/*`、`sync/*`、`infra/*` **不得**出现 `core/`（除 `core/` 自身）；`core/*` **不得**出现 `app/`；头文件级无环。
 5. 每子步独立提交（源码 `refactor(...)`、文档 `docs(architecture): …`）并 `git push origin feature/live-buffer`。
 
@@ -221,9 +224,9 @@ latin1 裸字节读写；`codeOnly()` 掩码后 `{}` 配对；先断言后**降�
 
 ## 7. 执行记录（滚动回填）
 
-- **8.1 …**（待填）
-- **8.2 …**（待填）
+- **8.1（含 8.2 + 8.4 合并）— 完成（`985feec`）**：`Renderer`/`OSDManager` 去 `core/Player.h`；新增 `output/video/RenderContext.h`、`output/video/ControlBarState.h`、`output/osd/StatsSnapshot.h`；`Player::MakeRenderContext(AVFrame*)` 在 core 侧组装快照；`Player::ControlBarState` 改为 `using ControlBarState = ::ControlBarState;`（`uiBar`/`GetControlBar()` 保留）。**合并原因**：`Renderer` 去 `Player*` ⇒ `OSDManager` 必须同步去 `Player*`（`RenderOSD` 调 `osd->Update`），且 `Renderer` 需要 `ControlBarState`，三者互锁。行数：`Renderer.cpp` 705→685、`OSDManager.cpp` 444→437、`Player.h` 409→400、`Player.cpp` 1015→1184（+169 = `MakeRenderContext`）。验证：Debug/Release 0 error、FLV 字节一致、**真机像素 A/B 通过**（控制栏指标完全相同：图标白 476 / 蓝 306 / 轨道灰 9700；OSD 4318 vs 4328；标题字符串逐字相同）。
+- **8.2 — 已合并进 8.1**（`output/osd/StatsSnapshot.h` 纯值快照 + `OSDManager::Update(SDL_Renderer*, const StatsSnapshot&)`）。
 - **8.3 …**（待填）
-- **8.4 …**（待填）
+- **8.4 — 已合并进 8.1**（`ControlBarState` 移至 `output/video/ControlBarState.h`，不是 `app/ControlBar.h`：`app` 是 L6，`output` 引用它会形成反向依赖，**依赖矩阵优先于草稿**）。
 - **8.5 …**（待填）
 - **8.6 …**（待填）
