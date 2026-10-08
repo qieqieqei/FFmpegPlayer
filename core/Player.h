@@ -71,6 +71,8 @@
 #include "recording/OutputPipeline.h"
 #include "output/osd/FontManager.h"
 #include "output/osd/OSDManager.h"
+#include "output/video/ControlBarState.h"
+#include "output/video/RenderContext.h"
 #include "infra/DecodeResult.h"
 
 #include "infra/FFmpegPtr.h"
@@ -257,25 +259,10 @@ public:
 
     SDL_Window* GetWindow() const;
 
-    // ---------- Control bar UI (8.14) ----------
-    struct ControlBarState
-    {
-        bool visible = true;          // always shown
+    // ---------- Control bar UI (8.14 / phase 8.1) ----------
 
-        bool seekDragging = false;    // progress bar dragging
-
-        double seekPreview = -1.0;    // drag preview time (s)
-
-        int hoverButton = 0;          // 0=none 1=prev 2=play/pause 3=next
-
-        SDL_Rect prevBtn{};           // prev button hit rect
-
-        SDL_Rect playBtn{};           // play/pause button hit rect
-
-        SDL_Rect nextBtn{};           // next button hit rect
-
-        SDL_Rect track{};             // progress track hit rect
-    };
+    // type moved to output/video/ControlBarState.h (data only)
+    using ControlBarState = ::ControlBarState;
 
     ControlBarState& GetControlBar()
     {
@@ -321,6 +308,10 @@ private:
     // 取帧时间戳（秒）
     double GetFramePts(
         AVFrame* frame) const;
+
+    // phase 8.1: build the read-only render snapshot for output/video
+    RenderContext MakeRenderContext(
+        AVFrame* frame);
     // 更新当前播放时间 / 进度
     void SetCurrentTime(
         double time);

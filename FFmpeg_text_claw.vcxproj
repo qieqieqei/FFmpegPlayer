@@ -228,6 +228,7 @@
     <ClInclude Include="recording\OutputPipeline.h" />
     <ClInclude Include="streaming\StreamMonitor.h" />
     <ClInclude Include="output\osd\OSDManager.h" />
+    <ClInclude Include="output\osd\StatsSnapshot.h" />
     <ClInclude Include="core\Player.h" />
     <ClInclude Include="core\PlayerState.h" />
     <ClInclude Include="core\MediaContext.h" />
@@ -236,6 +237,8 @@
     <ClInclude Include="pipeline\queue\FrameQueue.h" />
     <ClInclude Include="pipeline\queue\PacketQueue.h" />
     <ClInclude Include="output\video\Renderer.h" />
+    <ClInclude Include="output\video\RenderContext.h" />
+    <ClInclude Include="output\video\ControlBarState.h" />
     <ClInclude Include="output\video\VideoPresenter.h" />
     <ClInclude Include="features\screenshot\ScreenshotManager.h" />
     <ClInclude Include="features\seek\SeekController.h" />

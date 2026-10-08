@@ -521,6 +521,172 @@ PlayerState Player::GetState() const
     return state;
 }
 
+// ============================================================
+// phase 8.1: build the render snapshot handed to output/video
+// Renderer (replaces the former Player* parameter)
+// ============================================================
+
+RenderContext Player::MakeRenderContext(
+    AVFrame* frame)
+{
+    RenderContext ctx;
+
+    ctx.window =
+        media->presenter.GetWindow();
+
+    ctx.renderer =
+        media->presenter.GetRenderer();
+
+    ctx.texture =
+        media->presenter.GetTexture();
+
+    ctx.sws =
+        frame ? GetSwsForFrame(frame) : nullptr;
+
+    ctx.rgbData =
+        GetRGBData();
+
+    ctx.rgbLinesize =
+        GetRGBLinesize();
+
+    ctx.rgbTexture =
+        GetRGBTexture();
+
+    ctx.videoWidth =
+        GetVideoWidth();
+
+    ctx.videoHeight =
+        GetVideoHeight();
+
+    // title label (same mapping the Renderer used to do locally)
+    switch (GetState())
+    {
+    case PlayerState::Playing:
+        ctx.stateText = "Playing";
+        break;
+
+    case PlayerState::Paused:
+        ctx.stateText = "Paused";
+        break;
+
+    case PlayerState::EndOfFile:
+        ctx.stateText = "EOF";
+        break;
+
+    default:
+        ctx.stateText = "Stopped";
+        break;
+    }
+
+    ctx.paused =
+        (GetState() == PlayerState::Paused);
+
+    ctx.fullscreen =
+        fullscreen;
+
+    ctx.fullScreenText =
+        FullScreenToString();
+
+    ctx.speed =
+        GetPlaybackSpeed();
+
+    ctx.progress =
+        GetProgress();
+
+    ctx.duration =
+        GetDuration();
+
+    ctx.volume =
+        GetVolume();
+
+    ctx.timeString =
+        GetTimeString();
+
+    ctx.durationString =
+        GetDurationString();
+
+    ctx.osd =
+        osdManager.get();
+
+    ctx.bar =
+        &uiBar;
+
+    // ---------- OSD statistics snapshot (phase 8.2) ----------
+
+    ctx.stats.stateText =
+        StateToString();
+
+    ctx.stats.timeString =
+        ctx.timeString;
+
+    ctx.stats.durationString =
+        ctx.durationString;
+
+    ctx.stats.hardwareDecode =
+        IsHardwareDecode();
+
+    ctx.stats.speed =
+        ctx.speed;
+
+    ctx.stats.volume =
+        ctx.volume;
+
+    if (statistics)
+    {
+        ctx.stats.hasStats = true;
+
+        ctx.stats.resolution =
+            statistics->GetResolution();
+
+        ctx.stats.videoCodec =
+            statistics->GetVideoCodec();
+
+        ctx.stats.audioCodec =
+            statistics->GetAudioCodec();
+
+        ctx.stats.nominalFps =
+            statistics->GetNominalFPS();
+
+        ctx.stats.decodeFps =
+            statistics->GetDecodeFPS();
+
+        ctx.stats.renderFps =
+            statistics->GetFPS();
+
+        ctx.stats.bitrateText =
+            PlayerStatistics::FormatBitrate(
+                statistics->GetBitrate());
+
+        ctx.stats.videoFrames =
+            statistics->GetVideoFrames();
+
+        ctx.stats.videoBufferMs =
+            statistics->GetVideoBufferMs();
+
+        ctx.stats.audioBufferMs =
+            statistics->GetAudioBufferMs();
+
+        ctx.stats.videoPackets =
+            statistics->GetVideoPackets();
+
+        ctx.stats.audioPackets =
+            statistics->GetAudioPackets();
+
+        ctx.stats.droppedFrames =
+            statistics->GetDroppedFrames();
+    }
+
+    if (networkStatistics)
+    {
+        ctx.stats.hasNetwork = true;
+
+        ctx.stats.networkText =
+            networkStatistics->ToString();
+    }
+
+    return ctx;
+}
+
 const char* Player::StateToString() const
 {
     switch (state)
@@ -650,9 +816,11 @@ void Player::ToggleFullScreen()
         media->presenter.ApplyFullscreen(false);
     }
 
+    RenderContext renderCtx =
+        MakeRenderContext(nullptr);
+
     UpdateWindowTitle(
-        media->presenter.GetWindow(),
-        this);
+        renderCtx);
 }
 
 bool Player::IsFullScreen() const

@@ -4,7 +4,7 @@
 #include <chrono>
 #include <string>
 
-class Player;
+struct StatsSnapshot;
 class FontManager;
 
 // ============================================================
@@ -33,7 +33,7 @@ public:
 
     void Update(
         SDL_Renderer* renderer,
-        Player* player);
+        const StatsSnapshot& snapshot);
 
     void Render(
         SDL_Renderer* renderer);

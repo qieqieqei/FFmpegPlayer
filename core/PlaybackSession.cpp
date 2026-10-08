@@ -1759,12 +1759,12 @@ void PlaybackSession::PresentFrame(
 {
     // ---------- render ----------
 
+    RenderContext renderCtx =
+        owner.MakeRenderContext(frame);
+
     RenderFrame(
         frame,
-        media.presenter.GetWindow(),
-        media.presenter.GetRenderer(),
-        media.presenter.GetTexture(),
-        &owner,
+        renderCtx,
         quit);
 
     owner.statistics->OnFrameRendered();

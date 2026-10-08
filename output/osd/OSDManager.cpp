@@ -2,9 +2,7 @@
 
 #include "output/osd/FontManager.h"
 
-#include "core/Player.h"
-
-#include "features/statistics/PlayerStatistics.h"
+#include "output/osd/StatsSnapshot.h"
 
 #include <sstream>
 #include <iomanip>
@@ -53,10 +51,9 @@ bool OSDManager::Init(
 
 void OSDManager::Update(
     SDL_Renderer* renderer,
-    Player* player)
+    const StatsSnapshot& snapshot)
 {
     if (!renderer ||
-        !player ||
         !fontManager)
     {
         return;
@@ -64,41 +61,38 @@ void OSDManager::Update(
 
     // ---------- 拼装文本 ----------
 
-    PlayerStatistics* stats =
-        player->GetStatistics();
-
     std::ostringstream oss;
 
     oss
         << "FFmpeg Player\n"
         << "State : "
-        << player->StateToString()
+        << snapshot.stateText
         << "\n"
         << "Time : "
-        << player->GetTimeString()
+        << snapshot.timeString
         << " / "
-        << player->GetDurationString();
+        << snapshot.durationString;
 
-    if (stats)
+    if (snapshot.hasStats)
     {
         oss
             << "\n"
             << "Resolution : "
-            << stats->GetResolution()
+            << snapshot.resolution
             << "\n"
             << "Codec : "
-            << stats->GetVideoCodec()
+            << snapshot.videoCodec
             // 8.4（评审六）：诚实标注解码路径——
             // 解码 GPU（HW）已完成，渲染仍为 CPU 回读
-            << (player->IsHardwareDecode() ?
+            << (snapshot.hardwareDecode ?
                 " (HW decode)" :
                 " (SW decode)");
 
-        if (!stats->GetAudioCodec().empty())
+        if (!snapshot.audioCodec.empty())
         {
             oss
                 << " / "
-                << stats->GetAudioCodec();
+                << snapshot.audioCodec;
         }
 
         oss
@@ -106,41 +100,40 @@ void OSDManager::Update(
             << "FPS : "
             << std::fixed
             << std::setprecision(1)
-            << stats->GetNominalFPS()
+            << snapshot.nominalFps
             << " (Decode "
-            << stats->GetDecodeFPS()
+            << snapshot.decodeFps
             << " / Render "
-            << stats->GetFPS()
+            << snapshot.renderFps
             << ")"
             << "\n"
             << "Bitrate : "
-            << PlayerStatistics::FormatBitrate(
-                stats->GetBitrate())
+            << snapshot.bitrateText
             << "\n"
             << "Buffer : Video "
-            << stats->GetVideoFrames()
+            << snapshot.videoFrames
             << " frames ("
-            << stats->GetVideoBufferMs()
+            << snapshot.videoBufferMs
             << " ms) / Audio "
-            << stats->GetAudioBufferMs()
+            << snapshot.audioBufferMs
             << " ms"
             << "\n"
             << "Queues : V "
-            << stats->GetVideoPackets()
+            << snapshot.videoPackets
             << " / A "
-            << stats->GetAudioPackets()
+            << snapshot.audioPackets
             << " packets"
             << "\n"
             << "Dropped : "
-            << stats->GetDroppedFrames();
+            << snapshot.droppedFrames;
     }
 
     // 8.4：网络统计行（直播：输入/输出 FPS、码率、丢包率、缓冲水位）
-    if (player->GetNetworkStatistics())
+    if (snapshot.hasNetwork)
     {
         oss
             << "\n"
-            << player->GetNetworkStatistics()->ToString();
+            << snapshot.networkText;
     }
 
     oss
@@ -148,11 +141,11 @@ void OSDManager::Update(
         << "Speed : "
         << std::fixed
         << std::setprecision(1)
-        << player->GetPlaybackSpeed()
+        << snapshot.speed
         << "x"
         << "\n"
         << "Volume : "
-        << player->GetVolume()
+        << snapshot.volume
         << "%";
 
     std::string text =

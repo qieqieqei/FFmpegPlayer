@@ -1,7 +1,8 @@
 #include "output/video/Renderer.h"
 #include "infra/Logger.h"
 
-#include "core/Player.h"
+#include "output/video/ControlBarState.h"
+#include "output/osd/OSDManager.h"
 #include "infra/Logger.h"
 
 #include <SDL.h>
@@ -25,25 +26,27 @@
 
 bool RenderFrame(
     AVFrame* frame,
-    SDL_Window* window,
-    SDL_Renderer* renderer,
-    SDL_Texture* texture,
-    Player* player,
+    const RenderContext& ctx,
     bool& quit)
 {
+    SDL_Window* window =
+        ctx.window;
+
+    SDL_Renderer* renderer =
+        ctx.renderer;
     // ---------- YUV -> RGB 转换 ----------
 
     SwsContext* swsCtx =
-        player->GetSwsForFrame(frame);              // 颜色空间转换器
+        ctx.sws;              // 颜色空间转换器
 
     uint8_t* rgbData =
-        player->GetRGBData();                 // RGB 缓冲首地址
+        ctx.rgbData;                 // RGB 缓冲首地址
 
     int rgbLinesize =
-        player->GetRGBLinesize();             // RGB 每行字节数
+        ctx.rgbLinesize;             // RGB 每行字节数
 
     SDL_Texture* rgbTexture =
-        player->GetRGBTexture();              // RGB 纹理
+        ctx.rgbTexture;              // RGB 纹理
 
     if (!swsCtx || !rgbData || !rgbTexture)
     {
@@ -92,9 +95,9 @@ bool RenderFrame(
 
     double videoRatio =
         static_cast<double>(
-            player->GetVideoWidth())
+            ctx.videoWidth)
         /
-        player->GetVideoHeight();             // 视频宽高比
+        ctx.videoHeight;             // 视频宽高比
 
     double windowRatio =
         static_cast<double>(
@@ -143,22 +146,19 @@ bool RenderFrame(
     // ---------- OSD ----------
 
     RenderOSD(
-        renderer,
-        player);
+        ctx);
 
     // ---------- Control bar (8.14) ----------
 
     RenderControlBar(
-        renderer,
-        player);
+        ctx);
 
     SDL_RenderPresent(renderer);
 
     // ---------- 窗口标题 ----------
 
     UpdateWindowTitle(
-        window,
-        player);
+        ctx);
 
     return true;
 }
@@ -261,70 +261,51 @@ bool InitSDL(
 // ============================================================
 
 void UpdateWindowTitle(
-    SDL_Window* window,
-    Player* player)
+    const RenderContext& ctx)
 {
-    if (!window ||
-        !player)
+    if (!ctx.window)
     {
         return;
     }
 
-    std::string state;
-
-    switch (player->GetState())
-    {
-    case PlayerState::Playing:
-        state = "Playing";
-        break;
-
-    case PlayerState::Paused:
-        state = "Paused";
-        break;
-
-    case PlayerState::EndOfFile:
-        state = "EOF";
-        break;
-
-    default:
-        state = "Stopped";
-        break;
-    }
+    // phase 8.1: state label comes from core (same mapping as before)
+    std::string state =
+        ctx.stateText ? ctx.stateText : "Stopped";
 
     std::ostringstream speedStream;
 
     speedStream
         << std::fixed
         << std::setprecision(1)
-        << player->GetPlaybackSpeed();
+        << ctx.speed;
 
     std::ostringstream oss;
 
     oss
         << std::fixed
         << std::setprecision(2)
-        << player->GetProgress() * 100.0;
+        << ctx.progress * 100.0;
 
     std::string title =
         "FFmpeg Player | " +
         state +
         " | " +
-        player->FullScreenToString() +
+        ctx.fullScreenText +
         " | " +
         speedStream.str() +
         "x | " +
         "Volume " +
-        std::to_string(player->GetVolume()) +
+        std::to_string(ctx.volume) +
         " | " +
-        player->GetTimeString() +
+        ctx.timeString +
         " / " +
-        player->GetDurationString() +
+        ctx.durationString +
         " | " +
         oss.str() +
         "%";
 
     SDL_SetWindowTitle(
-        window,
+        ctx.window,
         title.c_str());
 }
 
@@ -333,17 +314,15 @@ void UpdateWindowTitle(
 // ============================================================
 
 void RenderOSD(
-    SDL_Renderer* renderer,
-    Player* player)
+    const RenderContext& ctx)
 {
-    if (!renderer ||
-        !player)
+    if (!ctx.renderer)
     {
         return;
     }
 
     OSDManager* osd =
-        player->GetOSDManager();
+        ctx.osd;
 
     if (!osd)
     {
@@ -351,11 +330,11 @@ void RenderOSD(
     }
 
     osd->Update(
-        renderer,
-        player);
+        ctx.renderer,
+        ctx.stats);
 
     osd->Render(
-        renderer);
+        ctx.renderer);
 }
 
 // ============================================================
@@ -397,17 +376,19 @@ static void FillTriangle(
 }
 
 void RenderControlBar(
-    SDL_Renderer* renderer,
-    Player* player)
+    const RenderContext& ctx)
 {
-    if (!renderer ||
-        !player)
+    if (!ctx.renderer ||
+        !ctx.bar)
     {
         return;
     }
 
+    SDL_Renderer* renderer =
+        ctx.renderer;
+
     SDL_Window* window =
-        player->GetWindow();
+        ctx.window;
 
     if (!window)
     {
@@ -428,8 +409,8 @@ void RenderControlBar(
         return;
     }
 
-    Player::ControlBarState& ui =
-        player->GetControlBar();
+    ControlBarState& ui =
+        *ctx.bar;
 
     const int barH = 46;             // bar height
 
@@ -507,10 +488,10 @@ void RenderControlBar(
     // ---------- progress ----------
 
     double duration =
-        player->GetDuration();
+        ctx.duration;
 
     double progress =
-        player->GetProgress();
+        ctx.progress;
 
     if (duration > 0.0)
     {
@@ -590,8 +571,7 @@ void RenderControlBar(
     // ---------- buttons ----------
 
     bool paused =
-        (player->GetState() ==
-        PlayerState::Paused);
+        ctx.paused;
 
     // hover highlight
     if (ui.hoverButton == 1)
