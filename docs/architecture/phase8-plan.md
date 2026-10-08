@@ -179,6 +179,14 @@ struct IInputHandler {
 - `Player::Close` 的释放序列移入 `PlaybackSession::Shutdown()`；`Player::Close` 保 `output.reset()` / `session->Shutdown()` 顺序壳。
 - 目标：`player.cpp` **1016 → 200~500**。
 
+> **实际执行（2026-10-09）**：原算术低估了规模。真正要压进 200~500，需下沉的 body 合计 ≈ **866 行**
+> （`Init` 122 + `Run` 116 + `MakeRenderContext` 173 + `Close` 48 + `LoadConfig` 54 + 控制/工具类 ≈ 355），
+> 而非本节的 ≈215 行。故 **8.5 拆为 8.5a / 8.5b / 8.5c 三批**（见 §7）。
+> **采用 Design B**：**所有子系统 `unique_ptr` 成员仍留在 `Player`**，只把函数**体**搬进 `PlaybackSession`，
+> 经现成 `owner.` 前缀访问（`PlaybackSession` 是 `Player` 的 `friend`）→ 不动成员声明 ⇒ **零析构顺序 / 双释放风险**，
+> 也无需改动既有 221 处 `owner.<member>` 引用。`Close` **不加** `output.reset()`（原样，`~Player` 逆序析构已保证顺序）。
+> 结果：`Player.cpp` **1016 → 500**（8.5c 收尾补搬 `SetScreenshotAt` 恰好落到上界），**目标达成**。
+
 ---
 
 ## 4. 子步设计
@@ -186,11 +194,14 @@ struct IInputHandler {
 | 子步 | 内容 | 风险 |
 |---|---|---|
 | **8.1** | `output/video/RenderContext.h` + `Renderer.{h,cpp}` 去 `Player*`；`PlaybackSession` 渲染路径填充并传参 | **中**（渲染路径，需视觉核对） |
-| **8.2** | `output/osd/StatsSnapshot.h` + `OSDManager.{h,cpp}` 去 `Player*` | 低-中（OSD 视觉核对） |
+| **8.2** | `output/osd/StatsSnapshot.h` + `OSDManager.{h,cpp}` 去 `Player*`（**已合并进 8.1**） | 低-中（OSD 视觉核对） |
 | **8.3** | `core/IInputHandler.h` + `Player::SetInputHandler` + 两处调用点改写；`app/Event.*` → `app/EventController.*`（`implements IInputHandler`）；`main.cpp` 注入 | 中（事件路径；键盘/鼠标回归） |
-| **8.4** | `output/video/ControlBarState.h`；`Player` 去类型/`GetControlBar`；持有者调整 | 中（控制栏交互） |
-| **8.5** | `Init`/`LoadConfig`/`Close` 装配下沉 `PlaybackSession` → `player.cpp` 200~500 | **中高**（生命周期/析构顺序/线程） |
+| **8.4** | `output/video/ControlBarState.h`；`Player` 去类型/`GetControlBar`；持有者调整（**已合并进 8.1**） | 中（控制栏交互） |
+| **8.5** | `Init`/`Close`/`Run`/`MakeRenderContext`/`LoadConfig` + 控制/工具类 body 下沉 `PlaybackSession` → `player.cpp` 200~500 | **中高**（生命周期/线程） |
 | **8.6** | 最终 Review + `docs/architecture/phase8-report.md` + 计划回填 | 低 |
+
+> **合并/拆分修正（2026-10-09）**：**8.2、8.4 已合并进 8.1**（三者互锁：`Renderer` 去 `Player*` ⇒ `OSDManager` 必须同步；
+> `Renderer` 需要 `ControlBarState` 完整类型）；**8.5 拆为 8.5a / 8.5b / 8.5c**（规模重估，见 §3.5 与 §7）。
 
 ### 通用手法（承阶段 5/6/7 脚本）
 latin1 裸字节读写；`codeOnly()` 掩码后 `{}` 配对；先断言后**降序** splice；自撰文本纯 ASCII；每步独立 commit + push；每步 Debug 0 error。
@@ -228,5 +239,8 @@ latin1 裸字节读写；`codeOnly()` 掩码后 `{}` 配对；先断言后**降�
 - **8.2 — 已合并进 8.1**（`output/osd/StatsSnapshot.h` 纯值快照 + `OSDManager::Update(SDL_Renderer*, const StatsSnapshot&)`）。
 - **8.3 — 完成（`01b3cf0`）**：core 侧新增 `core/IInputHandler.h`（`struct IInputHandler { virtual ~IInputHandler() = default; virtual void HandleEvents(bool& quit) = 0; };`）；`Player::SetInputHandler(IInputHandler*)` + 成员 `IInputHandler* inputHandler`（非拥有）；两处轮询点改为 `if (inputHandler) inputHandler->HandleEvents(quit);`（`Player::Run` 与 `PlaybackSession::AcquireAndSyncFrame` 片等循环）——`PlaybackSession` 经 `friend` 读 `owner.inputHandler`；`app/Event.{h,cpp}` → `app/EventController.{h,cpp}`（`git mv`，`class EventController : public IInputHandler`，构造注入 `Player*`，键处理体**逐字节不动**）；`main.cpp` 在 `Run()` 前 `EventController eventController(&player); player.SetInputHandler(&eventController);`。顺带补齐 `vcxproj.filters` 中 8.1 的三个头文件条目。行数：`Player.h` 414→423、`Player.cpp` 1231→1238、`PlaybackSession.cpp` 2811→2812、`EventController.h` 24→37、`EventController.cpp` 368→373、`main.cpp` 335→344、`vcxproj` 267→268、`filters` 351→363、新 `IInputHandler.h` 19。**验证**：Debug/Release 0 error（warning 基线不变）；脚本抽查 `core/*` 无 `app/` include、`output/*` 无 `core/` include；**真机功能验证**：播放 ~6 s 后 `CloseMainWindow()` → SDL_QUIT → 注入的 `HandleEvents` 置 `quit` → `exit=0` + 日志 `[Main] Exit`（证明注入生效）；`--screenshot-at 5` 像素指标与 8.3 前完全一致（图标白 476 / 蓝 276 / 轨道灰 10165）；FLV 三件套字节不变。
 - **8.4 — 已合并进 8.1**（`ControlBarState` 移至 `output/video/ControlBarState.h`，不是 `app/ControlBar.h`：`app` 是 L6，`output` 引用它会形成反向依赖，**依赖矩阵优先于草稿**）。
-- **8.5 …**（待填）
-- **8.6 …**（待填）
+- **8.5a — 完成（`04ee5cd`）**：`Player::Init` → `PlaybackSession::Prepare(const char*)`；`Player::Close` → `PlaybackSession::Shutdown()`。搬移时只做「成员加 `owner.` 前缀 + 去 `session->`」；`SDL_Quit()` 与 `[Player] Closed` 日志**留在** `Player::Close`（SDL 退出不是 session 职责）。行数：`Player.cpp` 1238→1093、`PlaybackSession.cpp` 2812→2973、`PlaybackSession.h` +7。验证：Debug/Release 0 error；FLV 三件套字节一致；真机 WM_CLOSE `exit=0`。
+- **8.5b — 完成（`a7ce0aa`）**：`Player::Run` → `PlaybackSession::RunLoop()`；`Player::MakeRenderContext` → `PlaybackSession::BuildRenderContext(AVFrame*)`。行数：`Player.cpp` 1094→807、`Player.h` 424→421（删声明 + `#include "output/video/RenderContext.h"`）、`PlaybackSession.h` 216→225、`PlaybackSession.cpp` 2974→3266。**坑**：首版因漏做 `media->` → `media.`（`Player` 持 `unique_ptr<MediaContext>`，`PlaybackSession` 持引用）报 ~14 个 `C2819/C2232`。四道验证全过。
+- **8.5c — 完成（`7fbbec4`）**：18 个控制/工具方法 body 下沉（`LoadConfig→ApplyConfig`、`ToggleSubtitle→ToggleSubtitleEnabled`、`TogglePause→TogglePausePlayback`、`Pause→PausePlayback`、`Resume→ResumePlayback`、`StateToString→StateToString`、`SetPlaybackSpeed→ApplySpeed`、`SetVolume→ApplyVolume`、`TakeScreenshot→CaptureScreenshot`、`ToggleFullScreen→ToggleFullScreenMode`、`GetTimeString→FormatTimeString`、`GetDurationString→FormatDurationString`、`SetCurrentTime→SetPlaybackTime`、`SetScreenshotAt→ConfigureScreenshot`，及 `GetVideoWidth/GetVideoHeight/IsHardwareDecode/GetFramePts` 保持原名）。**`Player.h` 未动**（壳保持原签名 → app 调用点零改动）。行数：`Player.cpp` **807→500**、`PlaybackSession.h` 225→252、`PlaybackSession.cpp` 3266→3674。**坑**：生成的声明表漏补尾分号 → 51 个 `C2144/C2143`（`PlaybackSession.h(62,5)`）；修法见报告 §6。四道验证全过。**`Player.cpp` = 500 行，目标区间 200~500 达成。**
+- **8.6 — 完成（`d17e9fc` + `2d1fa8d` + 本条文档）**：① 依赖验收扫描 **129 文件 / 247 include 边 / 0 违规**；头文件环 **69 头 / 0 环**；`#include "core/Player.h"` 仅存于 `core/{Player,PlaybackSession}.cpp` + `app/{main,EventController}.cpp`。② 删 `core/Player.h` 5 条死 include（`recording/{VideoEncoder,AudioEncoder,FLVMuxer,HLSMuxer,RTMPPublisher}.h`）→ `Player.h` 421→415。③ **修复一处文案回归**：8.5c 的 `owner.` 前缀改名**穿透到字符串字面量**，把 `ApplyConfig` 日志 `", volume "` 改成了 `", owner.volume "` → 已还原（教训见报告 §6）。④ 文档：`docs/architecture/phase8-report.md`。
+- **最终指标**：`core/Player.cpp` **1016 → 500**（−50.8%）；自阶段 1 起点 1238 计为 **−59.6%**。

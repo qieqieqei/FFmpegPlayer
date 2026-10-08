@@ -106,10 +106,14 @@
 |---|---|---|---|---|
 | 8.1/8.2/8.4 | `output/video/Renderer.cpp`、`output/osd/OSDManager.cpp` include `core/Player.h`（`Player*`） | 拆为纯数据 `RenderContext` / `StatsSnapshot`（+ `ControlBarState` 类型外移）；由 `Player::MakeRenderContext` 在 core 侧填充快照 | `985feec` | ✅ `output/*` 已无 `core/` include |
 | 8.3 | `core/Player.cpp`、`core/PlaybackSession.cpp` include `app/Event.h`；`app/Event.cpp` 直接依赖 `Player` 本体 | core 侧定义抽象 `core/IInputHandler.h`；`app/Event.{h,cpp}` → `app/EventController.{h,cpp}`（`class EventController : public IInputHandler`）；`main.cpp` 注入 `SetInputHandler()` | `01b3cf0` | ✅ `core/*` 已无 `app/` include；`app` 仅依赖 `core`（经接口） |
+| 8.5a/b/c | （非反向依赖）装配与主体下沉：`Init`/`Close`/`Run`/`MakeRenderContext`/`LoadConfig` + 18 个控制/工具方法 body → `PlaybackSession`（Design B：成员留 `Player`，只搬 body） | `04ee5cd` / `a7ce0aa` / `7fbbec4` | ✅ `core/Player.cpp` **1016 → 500**；`core` 仍只依赖 `core` 自身 + 下层模块（矩阵不变） |
+| 8.6 | 终审扫描 + 死 include 清理 + 文案回归修复 | `d17e9fc` / `2d1fa8d` | ✅ **129 文件 / 247 include 边 / 0 违规**；头文件级 **69 头 / 0 环** |
 
-- 现状核对（脚本抽查）：`core/*` 命中 `app/` include = **0**；`output/*`、`features/*`、`pipeline/*`、`sync/*`、`infra/*` 命中 `core/` include = **0**。
-- 遗留（待阶段 8.6 终审）：
-  1. `Player` 仍是“上帝对象”，`Init`/`LoadConfig`/`Close` 装配与 `Run()` 壳尚未搬入 `PlaybackSession`（8.5）→ `core/Player.cpp` 行数尚未降到 200~500。
+- 现状核对（脚本抽查，`.tmp_phase86_dep.js` 按本文件 §2 矩阵逐单元判定）：`core/*` 命中 `app/` include = **0**；`output/*`、`features/*`、`pipeline/*`、`sync/*`、`infra/*` 命中 `core/` include = **0**；**全仓 0 违规**。
+- `#include "core/Player.h"` 现存引用方（仅 4 处，均为**允许方向**）：`core/Player.cpp`、`core/PlaybackSession.cpp`（core 自身）、`app/main.cpp`、`app/EventController.cpp`（app→core ✓）。`output/video/Renderer.cpp`、`output/osd/OSDManager.cpp` 已彻底移除。
+- 遗留（阶段 8.6 终审结论）：
+  1. ~~`Player` 仍是“上帝对象”，装配与 `Run()` 壳尚未搬入 `PlaybackSession`（8.5）~~ → **已完成**：8.5a/b/c 全部落地，`Player` 现为薄门面（`core/Player.cpp` = 500 行），仅保留一行式 getter/转发；`core/Player.h` 仍承载 `MAX_VIDEO_PACKETS`/`MAX_AUDIO_PACKETS` 等常量（**低优先，未处理**）。
+  2. `core/Player.h` 中 `infra/DecodeResult.h`、`streaming/NetworkBuffer.h` 经扫描**仅出现在 include 行**（无其它引用）→ **低优先清理候选**，本次未动（本次只清 `recording/*` 五条）。
   2. `docs/architecture/dependency.md` §3 草案写的 `ControlBarState → app/ControlBar.h` 与矩阵冲突，实际落在 `output/video/ControlBarState.h`（以矩阵为准，见 `phase8-plan.md §3.4`）。
   3. `SeekController`（features/seek）仍直接 include `pipeline` 具体类型（`Demuxer`/`PacketQueue`/`FrameQueue`）——矩阵中 `features→pipeline` 为 ✓，**当前判定为合规**，不做抽象。
 
