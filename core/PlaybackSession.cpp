@@ -3316,7 +3316,7 @@ bool PlaybackSession::ApplyConfig()
         << "[Player] Config loaded : "
         << "speed "
         << owner.playbackSpeed
-        << ", owner.volume "
+        << ", volume "
         << owner.volume
         << std::endl;
 
