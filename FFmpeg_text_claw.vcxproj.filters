@@ -108,7 +108,7 @@
     <ClCompile Include="core\PlaybackSession.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
-    <ClCompile Include="app\Event.cpp">
+    <ClCompile Include="app\EventController.cpp">
       <Filter>婧愭枃浠?/Filter>
     </ClCompile>
     <ClCompile Include="output\osd\FontManager.cpp">
@@ -233,10 +233,19 @@
     <ClInclude Include="output\video\Renderer.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
+    <ClInclude Include="output\video\RenderContext.h">
+      <Filter>澶存枃浠?/Filter>
+    </ClInclude>
+    <ClInclude Include="output\video\ControlBarState.h">
+      <Filter>澶存枃浠?/Filter>
+    </ClInclude>
     <ClInclude Include="output\video\VideoPresenter.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
     <ClInclude Include="core\Player.h">
+      <Filter>澶存枃浠?/Filter>
+    </ClInclude>
+    <ClInclude Include="core\IInputHandler.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
     <ClInclude Include="core\PlayerState.h">
@@ -248,13 +257,16 @@
     <ClInclude Include="core\PlaybackSession.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
-    <ClInclude Include="app\Event.h">
+    <ClInclude Include="app\EventController.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
     <ClInclude Include="output\osd\FontManager.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
     <ClInclude Include="output\osd\OSDManager.h">
+      <Filter>澶存枃浠?/Filter>
+    </ClInclude>
+    <ClInclude Include="output\osd\StatsSnapshot.h">
       <Filter>澶存枃浠?/Filter>
     </ClInclude>
     <ClInclude Include="pipeline\audio\AudioDecoder.h">

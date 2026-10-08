@@ -20,6 +20,7 @@
 #include <string>
 
 #include "core/Player.h"
+#include "app/EventController.h"
 #include "config/ConfigManager.h"
 #include "infra/Logger.h"
 
@@ -322,6 +323,14 @@ int main(
     Logger::Info()
         << "----------------------------------------"
         << std::endl;
+
+    // phase 8.3: input handling is injected from app; EventController
+    // implements core::IInputHandler so core/ never includes app/
+    EventController eventController(
+        &player);
+
+    player.SetInputHandler(
+        &eventController);
 
     player.Run();
 

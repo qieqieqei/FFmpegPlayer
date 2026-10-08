@@ -155,7 +155,7 @@
     <ClCompile Include="pipeline\demux\Demuxer.cpp" />
     <ClCompile Include="recording\AudioEncoder.cpp" />
     <ClCompile Include="recording\VideoEncoder.cpp" />
-    <ClCompile Include="app\Event.cpp" />
+    <ClCompile Include="app\EventController.cpp" />
     <ClCompile Include="output\osd\FontManager.cpp" />
     <ClCompile Include="hardware\CUDAContext.cpp" />
     <ClCompile Include="hardware\HardwareDecoder.cpp" />
@@ -210,7 +210,7 @@
     <ClInclude Include="pipeline\demux\Demuxer.h" />
     <ClInclude Include="recording\AudioEncoder.h" />
     <ClInclude Include="recording\VideoEncoder.h" />
-    <ClInclude Include="app\Event.h" />
+    <ClInclude Include="app\EventController.h" />
     <ClInclude Include="output\osd\FontManager.h" />
     <ClInclude Include="hardware\CUDAContext.h" />
     <ClInclude Include="hardware\HardwareDecoder.h" />
@@ -230,6 +230,7 @@
     <ClInclude Include="output\osd\OSDManager.h" />
     <ClInclude Include="output\osd\StatsSnapshot.h" />
     <ClInclude Include="core\Player.h" />
+    <ClInclude Include="core\IInputHandler.h" />
     <ClInclude Include="core\PlayerState.h" />
     <ClInclude Include="core\MediaContext.h" />
     <ClInclude Include="core\PlaybackSession.h" />

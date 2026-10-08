@@ -42,6 +42,7 @@
 #include "core/PlayerState.h"
 #include "core/MediaContext.h"
 #include "core/PlaybackSession.h"
+#include "core/IInputHandler.h"
 #include "pipeline/demux/Demuxer.h"
 #include "pipeline/video/VideoDecoder.h"
 #include "pipeline/audio/AudioDecoder.h"
@@ -123,6 +124,11 @@ public:
     void SetScreenshotAt(
         double seconds,
         const std::string& path);
+
+    // phase 8.3: input handling is injected from app (core has no
+    // app dependency). nullptr = no input handling.
+    void SetInputHandler(
+        IInputHandler* handler);
 
     // 渲染主循环（启动三个线程，播放直到退出）
     bool Run();
@@ -410,5 +416,8 @@ private:
     std::string screenshotAtPath;
 
     bool screenshotAtDone = false;
+
+    // phase 8.3: non-owning input handler injected by app
+    IInputHandler* inputHandler = nullptr;
 
 };

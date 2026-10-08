@@ -7,7 +7,6 @@
 #include "infra/Logger.h"
 #include "streaming/StreamMonitor.h"
 #include "hardware/CUDAContext.h"
-#include "app/Event.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -2306,9 +2305,11 @@ PlaybackSession::FrameAction PlaybackSession::AcquireAndSyncFrame(
             (!owner.syncController->IsLiveMode() ||
                 media.useNetBuffer))
         {
-            HandleEvent(
-                quit,
-                &owner);
+            if (owner.inputHandler)
+            {
+                owner.inputHandler->HandleEvents(
+                    quit);
+            }
 
             if (owner.state == PlayerState::Paused)
             {

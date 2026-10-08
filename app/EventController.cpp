@@ -1,4 +1,4 @@
-#include "app/Event.h"
+#include "app/EventController.h"
 
 #include "core/Player.h"
 #include "infra/Logger.h"
@@ -9,9 +9,14 @@
 // 事件处理
 // ============================================================
 
-void HandleEvent(
-    bool& quit,
-    Player* player)
+EventController::EventController(
+    Player* p)
+    : player(p)
+{
+}
+
+void EventController::HandleEvents(
+    bool& quit)
 {
     SDL_Event event;
 

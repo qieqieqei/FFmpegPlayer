@@ -2,6 +2,8 @@
 
 #include <SDL.h>
 
+#include "core/IInputHandler.h"
+
 class Player;
 
 // 处理 SDL 事件（渲染循环内每帧调用）
@@ -19,6 +21,17 @@ class Player;
 //   + / =   音量 +10
 //   -       音量 -10
 //   Q       退出
-void HandleEvent(
-    bool& quit,
-    Player* player);
+class EventController : public IInputHandler
+{
+public:
+
+    explicit EventController(
+        Player* player);
+
+    void HandleEvents(
+        bool& quit) override;
+
+private:
+
+    Player* player = nullptr;
+};

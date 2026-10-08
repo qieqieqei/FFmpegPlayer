@@ -1,7 +1,6 @@
 #include "core/Player.h"
 
 #include "output/video/Renderer.h"
-#include "app/Event.h"
 #include "infra/ErrorHandler.h"
 #include "infra/Logger.h"
 
@@ -265,6 +264,12 @@ void Player::SetScreenshotAt(
         << std::endl;
 }
 
+void Player::SetInputHandler(
+    IInputHandler* handler)
+{
+    inputHandler = handler;
+}
+
 bool Player::Run()
 {
     // 启动 Demux / Video / Audio 三个线程
@@ -299,9 +304,11 @@ bool Player::Run()
     {
         // ---------- 事件处理 ----------
 
-        HandleEvent(
-            quit,
-            this);
+        if (inputHandler)
+        {
+            inputHandler->HandleEvents(
+                quit);
+        }
 
         // ---------- 播放列表切换请求（`[` / `]`�?----------
 
