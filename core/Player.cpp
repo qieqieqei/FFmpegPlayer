@@ -109,119 +109,8 @@ void Player::SetLiveBufferOverride(
 bool Player::Init(
     const char* filename)
 {
-    state = PlayerState::Stopped;
-
-    // ---------- 常驻对象（不随媒体切换销毁） ----------
-
-    // 字体管理�?
-    fontManager =
-        std::make_unique<FontManager>();
-
-    // Font path: prefer exe dir (association launch may have cwd = video dir)
-    std::string fontPath = "Font/simhei.ttf";
-
-    if (char* basePath = SDL_GetBasePath())
-    {
-        fontPath = std::string(basePath) +
-            "Font/simhei.ttf";
-
-        SDL_free(basePath);
-    }
-
-    bool fontOk = fontManager->Init(
-        fontPath, 24);
-
-    if (!fontOk && fontPath != "Font/simhei.ttf")
-    {
-        fontOk = fontManager->Init(
-            "Font/simhei.ttf", 24);
-    }
-
-    if (!fontOk)
-    {
-        ErrorHandler::Log(
-            ErrorTag::Player,
-            "FontManager init failed");
-
-        return false;
-    }
-
-    // OSD 管理�?
-    osdManager =
-        std::make_unique<OSDManager>();
-
-    if (!osdManager->Init(
-        fontManager.get()))
-    {
-        ErrorHandler::Log(
-            ErrorTag::Player,
-            "OSDManager init failed");
-
-        return false;
-    }
-
-    // 同步控制�?
-    syncController =
-        std::make_unique<SyncController>();
-
-    // 截图管理�?
-    screenshotManager =
-        std::make_unique<ScreenshotManager>();
-
-    // Seek 控制�?
-    seekController =
-        std::make_unique<SeekController>();
-
-    // 网络流统计（7.2�?
-    networkStatistics =
-        std::make_unique<NetworkStatistics>();
-
-    // 网络缓冲控制�?.3�?
-    bufferController =
-        std::make_unique<BufferController>();
-
-    // 流媒体监控（7.9）：网络流健康巡检 + 告警
-    streamMonitor =
-        std::make_unique<StreamMonitor>();
-
-    if (configManager)
-    {
-        streamMonitor->Init(
-            networkStatistics.get(),
-            configManager->GetStreamConfig());
-    }
-
-    // 硬件加速探测（7.7）：CUDA -> D3D11VA -> DXVA2�?
-    // 失败不影响播放（解码仍走软解�?
-    cudaContext =
-        std::make_unique<CUDAContext>();
-
-    hardwareReady =
-        cudaContext->Init();
-
-    // 字幕管理�?
-    subtitleManager =
-        std::make_unique<SubtitleManager>();
-
-    // 播放列表管理器（可能已被 AddToPlaylist 提前创建�?
-    if (!playlistManager)
-    {
-        playlistManager =
-            std::make_unique<PlaylistManager>();
-    }
-
-    // ---------- 打开媒体 ----------
-
-    if (!session->OpenMedia(filename))
-    {
-        return false;
-    }
-
-    Logger::Info()
-        << "[Player] Init Success"
-        << std::endl;
-
-    return true;
+    return session->Prepare(
+        filename);
 }
 
 
@@ -389,41 +278,7 @@ bool Player::Run()
 
 void Player::Close()
 {
-    // 确保线程先停�?
-    session->audioAbort.store(true);
-
-    session->StopThreads();
-
-    // 释放媒体资源（窗�?/ 解码�?/ 音频�?/ 队列�?
-    session->ReleaseMedia();
-
-    // ---------- 常驻对象（unique_ptr 自动释放�?----------
-
-    osdManager.reset();
-
-    fontManager.reset();
-
-    syncController.reset();
-
-    screenshotManager.reset();
-
-    seekController.reset();
-
-    networkStatistics.reset();
-
-    bufferController.reset();
-
-    streamMonitor.reset();
-
-    cudaContext.reset();
-
-    hardwareReady = false;
-
-    configManager.reset();
-
-    subtitleManager.reset();
-
-    playlistManager.reset();
+    session->Shutdown();
 
     SDL_Quit();
 

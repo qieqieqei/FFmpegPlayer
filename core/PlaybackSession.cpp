@@ -36,6 +36,167 @@ PlaybackSession::~PlaybackSession()
 // 打开媒体（首次初始化 / 播放列表切换共用�?
 // ============================================================
 
+// ============================================================
+// assembly / teardown (phase 8.5a: moved from Player::Init / Player::Close)
+// ============================================================
+
+bool PlaybackSession::Prepare(
+    const char* filename)
+{
+    owner.state = PlayerState::Stopped;
+
+    // ---------- 常驻对象（不随媒体切换销毁） ----------
+
+    // 字体管理�?
+    owner.fontManager =
+        std::make_unique<FontManager>();
+
+    // Font path: prefer exe dir (association launch may have cwd = video dir)
+    std::string fontPath = "Font/simhei.ttf";
+
+    if (char* basePath = SDL_GetBasePath())
+    {
+        fontPath = std::string(basePath) +
+            "Font/simhei.ttf";
+
+        SDL_free(basePath);
+    }
+
+    bool fontOk = owner.fontManager->Init(
+        fontPath, 24);
+
+    if (!fontOk && fontPath != "Font/simhei.ttf")
+    {
+        fontOk = owner.fontManager->Init(
+            "Font/simhei.ttf", 24);
+    }
+
+    if (!fontOk)
+    {
+        ErrorHandler::Log(
+            ErrorTag::Player,
+            "FontManager init failed");
+
+        return false;
+    }
+
+    // OSD 管理�?
+    owner.osdManager =
+        std::make_unique<OSDManager>();
+
+    if (!owner.osdManager->Init(
+        owner.fontManager.get()))
+    {
+        ErrorHandler::Log(
+            ErrorTag::Player,
+            "OSDManager init failed");
+
+        return false;
+    }
+
+    // 同步控制�?
+    owner.syncController =
+        std::make_unique<SyncController>();
+
+    // 截图管理�?
+    owner.screenshotManager =
+        std::make_unique<ScreenshotManager>();
+
+    // Seek 控制�?
+    owner.seekController =
+        std::make_unique<SeekController>();
+
+    // 网络流统计（7.2�?
+    owner.networkStatistics =
+        std::make_unique<NetworkStatistics>();
+
+    // 网络缓冲控制�?.3�?
+    owner.bufferController =
+        std::make_unique<BufferController>();
+
+    // 流媒体监控（7.9）：网络流健康巡检 + 告警
+    owner.streamMonitor =
+        std::make_unique<StreamMonitor>();
+
+    if (owner.configManager)
+    {
+        owner.streamMonitor->Init(
+            owner.networkStatistics.get(),
+            owner.configManager->GetStreamConfig());
+    }
+
+    // 硬件加速探测（7.7）：CUDA -> D3D11VA -> DXVA2�?
+    // 失败不影响播放（解码仍走软解�?
+    owner.cudaContext =
+        std::make_unique<CUDAContext>();
+
+    owner.hardwareReady =
+        owner.cudaContext->Init();
+
+    // 字幕管理�?
+    owner.subtitleManager =
+        std::make_unique<SubtitleManager>();
+
+    // 播放列表管理器（可能已被 AddToPlaylist 提前创建�?
+    if (!owner.playlistManager)
+    {
+        owner.playlistManager =
+            std::make_unique<PlaylistManager>();
+    }
+
+    // ---------- 打开媒体 ----------
+
+    if (!OpenMedia(filename))
+    {
+        return false;
+    }
+
+    Logger::Info()
+        << "[Player] Init Success"
+        << std::endl;
+
+    return true;
+}
+
+void PlaybackSession::Shutdown()
+{
+    // 确保线程先停�?
+    audioAbort.store(true);
+
+    StopThreads();
+
+    // 释放媒体资源（窗�?/ 解码�?/ 音频�?/ 队列�?
+    ReleaseMedia();
+
+    // ---------- 常驻对象（unique_ptr 自动释放�?----------
+
+    owner.osdManager.reset();
+
+    owner.fontManager.reset();
+
+    owner.syncController.reset();
+
+    owner.screenshotManager.reset();
+
+    owner.seekController.reset();
+
+    owner.networkStatistics.reset();
+
+    owner.bufferController.reset();
+
+    owner.streamMonitor.reset();
+
+    owner.cudaContext.reset();
+
+    owner.hardwareReady = false;
+
+    owner.configManager.reset();
+
+    owner.subtitleManager.reset();
+
+    owner.playlistManager.reset();
+}
+
 bool PlaybackSession::OpenMedia(
     const std::string& path)
 {

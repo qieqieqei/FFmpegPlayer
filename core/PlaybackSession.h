@@ -48,6 +48,13 @@ public:
 
     void StopThreads();
 
+    // assembly / teardown (phase 8.5a, moved from Player::Init / Player::Close;
+    // Player keeps thin facade forwarders so app/main call sites are unchanged)
+    bool Prepare(
+        const char* filename);
+
+    void Shutdown();
+
     // ---- packet queue routing (phase 5.1, moved from Player) ----
 
     bool PushVideoPacket(
