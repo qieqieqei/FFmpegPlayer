@@ -73,4 +73,8 @@ struct RenderContext
 
     // OSD statistics snapshot
     StatsSnapshot stats;
+
+    // auto screenshot (--screenshot-at): when non-null the renderer dumps
+    // the composited frame (video + OSD + control bar) to this BMP path
+    const char* capturePath = nullptr;
 };

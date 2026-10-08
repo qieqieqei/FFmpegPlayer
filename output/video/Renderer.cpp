@@ -15,6 +15,9 @@
 #include <sstream>
 #include "infra/Logger.h"
 #include <iomanip>
+#include <cstdint>
+#include <cstdio>
+#include <vector>
 #include "infra/Logger.h"
 
 // ============================================================
@@ -23,6 +26,12 @@
 // 流程：YUV -> RGB24 -> 纹理 -> 等比缩放绘制 -> OSD -> 标题
 // 同步等待 / 事件处理都在 Player::Run 里，这里只负责画
 // ============================================================
+
+// --screenshot-at: read back the current render target (video + OSD +
+// control bar) into a 24-bit BMP. Must run before SDL_RenderPresent.
+static bool SaveRenderTargetBMP(
+    SDL_Renderer* renderer,
+    const std::string& path);
 
 bool RenderFrame(
     AVFrame* frame,
@@ -152,6 +161,28 @@ bool RenderFrame(
 
     RenderControlBar(
         ctx);
+
+    // --screenshot-at: dump the composited window before presenting
+    if (ctx.capturePath &&
+        ctx.capturePath[0] != '\0')
+    {
+        if (SaveRenderTargetBMP(
+                renderer,
+                ctx.capturePath))
+        {
+            Logger::Info()
+                << "[Render] Screenshot saved : "
+                << ctx.capturePath
+                << std::endl;
+        }
+        else
+        {
+            Logger::Error()
+                << "[Render] Screenshot failed : "
+                << ctx.capturePath
+                << std::endl;
+        }
+    }
 
     SDL_RenderPresent(renderer);
 
@@ -682,4 +713,127 @@ void RenderControlBar(
             renderer,
             &bar2);
     }
+}
+
+// ============================================================
+// SaveRenderTargetBMP : --screenshot-at helper
+//
+// Reads back the current SDL render target (video + OSD + control bar,
+// i.e. exactly what would be presented) and writes a 24-bit BMP.
+// Returns false when SDL read-back or file IO fails.
+// ============================================================
+
+static bool SaveRenderTargetBMP(
+    SDL_Renderer* renderer,
+    const std::string& path)
+{
+    int width = 0;
+
+    int height = 0;
+
+    if (SDL_GetRendererOutputSize(
+            renderer,
+            &width,
+            &height) != 0 ||
+        width <= 0 ||
+        height <= 0)
+    {
+        return false;
+    }
+
+    const int pitch =
+        width * 3;
+
+    std::vector<uint8_t> pixels(
+        static_cast<size_t>(pitch) *
+        static_cast<size_t>(height));
+
+    if (SDL_RenderReadPixels(
+            renderer,
+            nullptr,
+            SDL_PIXELFORMAT_RGB24,
+            pixels.data(),
+            pitch) != 0)
+    {
+        return false;
+    }
+
+    const int rowBytes =
+        ((width * 3 + 3) / 4) * 4;
+
+    const uint32_t imageBytes =
+        static_cast<uint32_t>(rowBytes) *
+        static_cast<uint32_t>(height);
+
+    const uint32_t fileBytes =
+        54 + imageBytes;
+
+    uint8_t header[54] = { 0 };
+
+    header[0] = 'B';
+    header[1] = 'M';
+
+    auto put16 = [&header](int off, uint16_t v)
+    {
+        header[off + 0] = static_cast<uint8_t>(v & 0xFF);
+        header[off + 1] = static_cast<uint8_t>((v >> 8) & 0xFF);
+    };
+
+    auto put32 = [&header](int off, uint32_t v)
+    {
+        header[off + 0] = static_cast<uint8_t>(v & 0xFF);
+        header[off + 1] = static_cast<uint8_t>((v >> 8) & 0xFF);
+        header[off + 2] = static_cast<uint8_t>((v >> 16) & 0xFF);
+        header[off + 3] = static_cast<uint8_t>((v >> 24) & 0xFF);
+    };
+
+    put32(2, fileBytes);                       // file size
+    put32(10, 54);                             // pixel data offset
+    put32(14, 40);                             // DIB header size
+    put32(18, static_cast<uint32_t>(width));   // width
+    put32(22, static_cast<uint32_t>(height));  // height (bottom-up)
+    put16(26, 1);                              // planes
+    put16(28, 24);                             // bits per pixel
+    put32(34, imageBytes);                     // image size
+    put32(38, 2835);                           // 72 dpi
+    put32(42, 2835);
+
+    FILE* file = nullptr;
+
+    if (fopen_s(&file, path.c_str(), "wb") != 0 ||
+        !file)
+    {
+        return false;
+    }
+
+    bool ok =
+        std::fwrite(header, 1, 54, file) == 54;
+
+    std::vector<uint8_t> row(
+        static_cast<size_t>(rowBytes), 0);
+
+    for (int y = height - 1; ok && y >= 0; --y)
+    {
+        const uint8_t* src =
+            pixels.data() +
+            static_cast<size_t>(y) * pitch;
+
+        for (int x = 0; x < width; ++x)
+        {
+            row[x * 3 + 0] = src[x * 3 + 2];   // B
+            row[x * 3 + 1] = src[x * 3 + 1];   // G
+            row[x * 3 + 2] = src[x * 3 + 0];   // R
+        }
+
+        ok = std::fwrite(
+                 row.data(),
+                 1,
+                 static_cast<size_t>(rowBytes),
+                 file) ==
+             static_cast<size_t>(rowBytes);
+    }
+
+    std::fclose(file);
+
+    return ok;
 }

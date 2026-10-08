@@ -117,6 +117,13 @@ public:
     // v2: CLI override --live-buffer <ms> (0 = low_latency, >0 = stable target)
     void SetLiveBufferOverride(int ms);
 
+    // CLI --screenshot-at <sec> : auto dump the composited frame
+    // (video + OSD + control bar) to BMP once that time is reached
+    // (empty path -> screenshot_at_<sec>s.bmp)
+    void SetScreenshotAt(
+        double seconds,
+        const std::string& path);
+
     // 渲染主循环（启动三个线程，播放直到退出）
     bool Run();
 
@@ -396,5 +403,12 @@ private:
     bool fullscreen = false;
 
     bool frameStepRequest = false;
+
+    // CLI --screenshot-at <sec> (dump composited frame once, then disable)
+    double screenshotAtSec = -1.0;
+
+    std::string screenshotAtPath;
+
+    bool screenshotAtDone = false;
 
 };

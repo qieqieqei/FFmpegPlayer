@@ -230,6 +230,41 @@ bool Player::Init(
 // 渲染主循�?
 // ============================================================
 
+void Player::SetScreenshotAt(
+    double seconds,
+    const std::string& path)
+{
+    screenshotAtSec =
+        seconds;
+
+    screenshotAtDone =
+        false;
+
+    if (path.empty())
+    {
+        std::ostringstream oss;
+
+        oss << "screenshot_at_"
+            << seconds
+            << "s.bmp";
+
+        screenshotAtPath =
+            oss.str();
+    }
+    else
+    {
+        screenshotAtPath =
+            path;
+    }
+
+    Logger::Info()
+        << "[Player] Auto screenshot at "
+        << seconds
+        << " s : "
+        << screenshotAtPath
+        << std::endl;
+}
+
 bool Player::Run()
 {
     // 启动 Demux / Video / Audio 三个线程
@@ -682,6 +717,19 @@ RenderContext Player::MakeRenderContext(
 
         ctx.stats.networkText =
             networkStatistics->ToString();
+    }
+
+    // ---------- auto screenshot (--screenshot-at) ----------
+
+    if (frame &&
+        screenshotAtSec >= 0.0 &&
+        !screenshotAtDone &&
+        GetCurrentTime() >= screenshotAtSec)
+    {
+        screenshotAtDone = true;
+
+        ctx.capturePath =
+            screenshotAtPath.c_str();
     }
 
     return ctx;

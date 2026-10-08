@@ -7,6 +7,7 @@
 //   FFmpeg_text_claw.exe --record [文件...]   # 启动即录制（record_<时间戳>.flv）
 //   FFmpeg_text_claw.exe --hls [文件...]      # 启动即 HLS 输出（hls_out/）
 //   FFmpeg_text_claw.exe --push [文件...]     # 启动即 RTMP 推流（stream.json 的 rtmp_url）
+//   FFmpeg_text_claw.exe --screenshot-at <sec> [--screenshot-file out.bmp]  # auto screenshot
 //   不带参数时播放默认测试视频（或 player.json 的 default_url）
 //   多个文件会加入播放列表（6.8），用 [ / ] 切换
 
@@ -44,6 +45,10 @@ int main(
 
     int cliLiveBufferMs = -1;  // v2: --live-buffer <ms> (0 = low_latency)
 
+    double cliScreenshotAt = -1.0;  // --screenshot-at <sec> (-1 = off)
+
+    std::string cliScreenshotFile;  // --screenshot-file <path> (optional)
+
     int firstFile = -1;  // 第一个非选项参数（文件）下标
 
     for (int i = 1; i < argc; i++)
@@ -80,6 +85,22 @@ int main(
             // v2: live buffer override (0 = low_latency)
             cliLiveBufferMs =
                 std::atoi(argv[i + 1]);
+
+            i++;
+        }
+        else if (std::strcmp(argv[i], "--screenshot-at") == 0 &&
+                 i + 1 < argc)
+        {
+            cliScreenshotAt =
+                std::atof(argv[i + 1]);
+
+            i++;
+        }
+        else if (std::strcmp(argv[i], "--screenshot-file") == 0 &&
+                 i + 1 < argc)
+        {
+            cliScreenshotFile =
+                argv[i + 1];
 
             i++;
         }
@@ -128,6 +149,14 @@ int main(
         player.SetLiveBufferOverride(cliLiveBufferMs);
     }
 
+    // --screenshot-at <sec> : dump the composited frame to BMP once
+    if (cliScreenshotAt >= 0.0)
+    {
+        player.SetScreenshotAt(
+            cliScreenshotAt,
+            cliScreenshotFile);
+    }
+
     // ---------- 播放列表（6.8）：多文件 / 单文件 / 默认 ----------
 
     // 注意：选项（--record/--hls/--push/-v/--log-file）可能出现在文件之后，
@@ -145,7 +174,9 @@ int main(
             }
 
             if (std::strcmp(argv[i], "--log-file") == 0 ||
-                std::strcmp(argv[i], "--live-buffer") == 0)
+                std::strcmp(argv[i], "--live-buffer") == 0 ||
+                std::strcmp(argv[i], "--screenshot-at") == 0 ||
+                std::strcmp(argv[i], "--screenshot-file") == 0)
             {
                 i++;  // 跳过日志文件名
 

@@ -98,6 +98,7 @@
 - ✅ 帧步进（暂停时逐帧查看，N 键）
 - ✅ 全屏切换（F 键）
 - ✅ 轻量日志系统：级别过滤（DEBUG/INFO/WARN/ERROR）、时间戳、`-v` 开 DEBUG、`--log-file` 写文件
+- ✅ 自动截图（回归核对用）：CLI `--screenshot-at <秒>` 播到指定时刻把**合成画面**（视频 + OSD + 控制栏，即 SDL 渲染目标）读回存成 24 位 BMP；`--screenshot-file <路径>` 可指定输出名（默认 `screenshot_at_<秒>s.bmp`）
 ### 稳定版（8.14）：崩溃修复 / 点播 / 控制栏 / 循环回退 / 切歌修复
 - ✅ **无参数启动崩溃修复**：main.cpp 哨兵 `firstFile=-1` 越界读 `argv[-1]` → 0xC0000005（ucrtbased.dll），改为 `firstFile >= 0 && firstFile < argc`
 - ✅ **默认播放视频**：`kDefaultVideo` 常量改为项目根 `a4c277.mp4`（142s），无参数启动直接播放
@@ -148,6 +149,8 @@ FFmpeg_text_claw.exe --log-file player.log file.mp4   # 同时写日志文件
 FFmpeg_text_claw.exe --record file.mp4          # 播放同时录制 FLV（record_*.flv）
 FFmpeg_text_claw.exe --hls file.mp4             # 播放同时输出 HLS（hls_out/）
 FFmpeg_text_claw.exe --push rtmp://host/live/stream file.mp4   # 播放同时 RTMP 推流
+FFmpeg_text_claw.exe --screenshot-at 10 file.mp4               # 播到第 10 秒把合成画面（视频+OSD+控制栏）存成 BMP
+FFmpeg_text_claw.exe --screenshot-at 10 --screenshot-file out.bmp file.mp4   # 指定输出文件名
 ```
 
 不带参数时播放默认视频 `D:\application\visual studio\product\FFmpeg_text_claw\a4c277.mp4`（代码内 `kDefaultVideo` 常量，硬编码绝对路径，可自行修改）。
