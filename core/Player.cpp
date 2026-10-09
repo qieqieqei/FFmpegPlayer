@@ -63,7 +63,6 @@ bool Player::Init(
         filename);
 }
 
-
 // ============================================================
 // 渲染主循�?
 // ============================================================
@@ -128,16 +127,6 @@ bool Player::PlayNext()
     return session->PlayNext();
 }
 
-size_t Player::GetPlaylistIndex() const
-{
-    return session->GetPlaylistIndex();
-}
-
-size_t Player::GetPlaylistCount() const
-{
-    return session->GetPlaylistCount();
-}
-
 const std::string& Player::GetCurrentPath() const
 {
     return session->GetCurrentPath();
@@ -150,13 +139,6 @@ const std::string& Player::GetCurrentPath() const
 void Player::ToggleSubtitle()
 {
     session->ToggleSubtitleEnabled();
-}
-
-bool Player::IsSubtitleEnabled() const
-{
-    return subtitleManager ?
-        subtitleManager->IsEnabled() :
-        false;
 }
 
 // ============================================================
@@ -184,24 +166,9 @@ void Player::Resume()
     session->ResumePlayback();
 }
 
-PlayerState Player::GetState() const
-{
-    return state;
-}
-
-const char* Player::StateToString() const
-{
-    return session->StateToString();
-}
-
 void Player::RequestFrameStep()
 {
     frameStepRequest = true;
-}
-
-bool Player::HasFrameStepRequest() const
-{
-    return frameStepRequest;
 }
 
 void Player::ClearFrameStepRequest()
@@ -247,29 +214,9 @@ bool Player::IsFullScreen() const
     return fullscreen;
 }
 
-const char* Player::FullScreenToString() const
-{
-    return fullscreen ? "FullScreen" : "Window";
-}
-
 // ============================================================
 // Seek 状态查�?
 // ============================================================
-
-bool Player::HasSeekRequest() const
-{
-    return session->HasSeekRequest();
-}
-
-double Player::GetSeekPosition() const
-{
-    return session->GetSeekPosition();
-}
-
-bool Player::IsSeekHandled() const
-{
-    return session->IsSeekHandled();
-}
 
 void Player::ClearSeekHandled()
 {
@@ -290,21 +237,6 @@ double Player::GetDuration() const
     return media->duration;
 }
 
-double Player::GetProgress() const
-{
-    return progress;
-}
-
-std::string Player::GetTimeString() const
-{
-    return session->FormatTimeString();
-}
-
-std::string Player::GetDurationString() const
-{
-    return session->FormatDurationString();
-}
-
 void Player::SetCurrentTime(
     double time)
 {
@@ -315,73 +247,11 @@ void Player::SetCurrentTime(
 // 渲染 / OSD 访问
 // ============================================================
 
-SDL_Window* Player::GetWindow() const
-{
-    return media->presenter.GetWindow();
-}
-
 void Player::SetAutoQuitOnEof(
     bool enable)
 {
     autoQuitOnEof = enable;
 }
-
-int Player::GetVideoWidth() const
-{
-    return session->GetVideoWidth();
-}
-
-int Player::GetVideoHeight() const
-{
-    return session->GetVideoHeight();
-}
-
-SwsContext* Player::GetSwsForFrame(
-    AVFrame* frame)
-{
-    return media->presenter.GetSwsForFrame(frame);
-}
-
-uint8_t* Player::GetRGBData() const
-{
-    return media->presenter.GetRGBData();
-}
-
-int Player::GetRGBLinesize() const
-{
-    return media->presenter.GetRGBLinesize();
-}
-
-SDL_Texture* Player::GetRGBTexture() const
-{
-    return media->presenter.GetRGBTexture();
-}
-
-FontManager* Player::GetFontManager() const
-{
-    return fontManager.get();
-}
-
-OSDManager* Player::GetOSDManager() const
-{
-    return osdManager.get();
-}
-
-PlayerStatistics* Player::GetStatistics() const
-{
-    return statistics.get();
-}
-
-bool Player::IsHardwareDecode() const
-{
-    return session->IsHardwareDecode();
-}
-
-NetworkStatistics* Player::GetNetworkStatistics() const
-{
-    return networkStatistics.get();
-}
-
 
 // ============================================================
 // 输出链：录制 / 推流 / HLS�?.4�?.6 集成�?
@@ -452,36 +322,6 @@ void Player::ToggleHLS()
 {
     output->ToggleHLS();
 }
-
-// ---------- 状态查�?----------
-
-bool Player::IsRecording() const
-{
-    return output->IsRecording();
-}
-
-bool Player::IsPushing() const
-{
-    return output->IsPushing();
-}
-
-bool Player::IsHLSActive() const
-{
-    return output->IsHLSActive();
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ============================================================
 // 工具

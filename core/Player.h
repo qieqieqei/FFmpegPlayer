@@ -142,10 +142,6 @@ public:
 
     bool PlayNext();
 
-    size_t GetPlaylistIndex() const;
-
-    size_t GetPlaylistCount() const;
-
     // 当前播放列表路径（Init / SwitchMedia 用）
     const std::string& GetCurrentPath() const;
 
@@ -156,8 +152,6 @@ public:
 
     // 开关字幕显示
     void ToggleSubtitle();
-
-    bool IsSubtitleEnabled() const;
 
     // ---------- 播放控制（5.2 / 5.4 / 5.5） ----------
 
@@ -171,14 +165,8 @@ public:
 
     void Resume();
 
-    PlayerState GetState() const;
-
-    const char* StateToString() const;
-
     // 帧步进（暂停时按 N 逐帧播放）
     void RequestFrameStep();
-
-    bool HasFrameStepRequest() const;
 
     void ClearFrameStepRequest();
 
@@ -227,27 +215,11 @@ public:
     // 无参切换：HLS 输出到 hls_out/，再按一次停止
     void ToggleHLS();
 
-    // 输出状态查询
-    bool IsRecording() const;
-
-    bool IsPushing() const;
-
-    bool IsHLSActive() const;
-
     void ToggleFullScreen();
 
     bool IsFullScreen() const;
 
-    const char* FullScreenToString() const;
-
     // ---------- Seek 状态查询 ----------
-
-    bool HasSeekRequest() const;
-
-    double GetSeekPosition() const;
-
-    // Seek 是否已执行完毕（渲染线程据此丢弃旧帧）
-    bool IsSeekHandled() const;
 
     void ClearSeekHandled();
 
@@ -256,16 +228,6 @@ public:
     double GetCurrentTime() const;
 
     double GetDuration() const;
-
-    double GetProgress() const;
-
-    std::string GetTimeString() const;
-
-    std::string GetDurationString() const;
-
-    // ---------- 渲染 / OSD 访问 ----------
-
-    SDL_Window* GetWindow() const;
 
     // ---------- Control bar UI (8.14 / phase 8.1) ----------
 
@@ -277,37 +239,9 @@ public:
         return uiBar;
     }
 
-    int GetVideoWidth() const;
-
-    int GetVideoHeight() const;
-
     // EOF 后自动退出（CLI 输出模式用：--record/--hls/--push）
     void SetAutoQuitOnEof(
         bool enable);
-
-    // 按帧实际格式取（或惰性创建）YUV->RGB 转换器；
-    // 帧格式变化（软解 YUV420P / 硬解 NV12）时自动重建
-    SwsContext* GetSwsForFrame(
-        AVFrame* frame);
-
-    uint8_t* GetRGBData() const;
-
-    int GetRGBLinesize() const;
-
-    SDL_Texture* GetRGBTexture() const;
-
-    FontManager* GetFontManager() const;
-
-    OSDManager* GetOSDManager() const;
-
-    PlayerStatistics* GetStatistics() const;
-
-    // 8.4：是否硬件解码（评审六：解码路径可观测）
-    bool IsHardwareDecode() const;
-
-    // 8.4：网络流统计（直播：FPS / 码率 / 丢包率 / 缓冲水位）
-    NetworkStatistics* GetNetworkStatistics() const;
-
 
 private:
 

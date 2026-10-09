@@ -224,7 +224,7 @@ bool PlaybackSession::RunLoop()
 
     Logger::Info()
         << "[Player] State : "
-        << owner.StateToString()
+        << StateToString()
         << std::endl;
 
     bool quit = false;
@@ -309,7 +309,7 @@ bool PlaybackSession::RunLoop()
 
     Logger::Info()
         << "[Player] State : "
-        << owner.StateToString()
+        << StateToString()
         << std::endl;
 
     return true;
@@ -330,25 +330,25 @@ RenderContext PlaybackSession::BuildRenderContext(
         media.presenter.GetTexture();
 
     ctx.sws =
-        frame ? owner.GetSwsForFrame(frame) : nullptr;
+        frame ? media.presenter.GetSwsForFrame(frame) : nullptr;
 
     ctx.rgbData =
-        owner.GetRGBData();
+        media.presenter.GetRGBData();
 
     ctx.rgbLinesize =
-        owner.GetRGBLinesize();
+        media.presenter.GetRGBLinesize();
 
     ctx.rgbTexture =
-        owner.GetRGBTexture();
+        media.presenter.GetRGBTexture();
 
     ctx.videoWidth =
-        owner.GetVideoWidth();
+        GetVideoWidth();
 
     ctx.videoHeight =
-        owner.GetVideoHeight();
+        GetVideoHeight();
 
     // title label (same mapping the Renderer used to do locally)
-    switch (owner.GetState())
+    switch (owner.state)
     {
     case PlayerState::Playing:
         ctx.stateText = "Playing";
@@ -368,19 +368,19 @@ RenderContext PlaybackSession::BuildRenderContext(
     }
 
     ctx.paused =
-        (owner.GetState() == PlayerState::Paused);
+        (owner.state == PlayerState::Paused);
 
     ctx.fullscreen =
         owner.fullscreen;
 
     ctx.fullScreenText =
-        owner.FullScreenToString();
+        (owner.fullscreen ? "FullScreen" : "Window");
 
     ctx.speed =
         owner.GetPlaybackSpeed();
 
     ctx.progress =
-        owner.GetProgress();
+        owner.progress;
 
     ctx.duration =
         owner.GetDuration();
@@ -389,10 +389,10 @@ RenderContext PlaybackSession::BuildRenderContext(
         owner.GetVolume();
 
     ctx.timeString =
-        owner.GetTimeString();
+        FormatTimeString();
 
     ctx.durationString =
-        owner.GetDurationString();
+        FormatDurationString();
 
     ctx.osd =
         owner.osdManager.get();
@@ -403,7 +403,7 @@ RenderContext PlaybackSession::BuildRenderContext(
     // ---------- OSD statistics snapshot (phase 8.2) ----------
 
     ctx.stats.stateText =
-        owner.StateToString();
+        StateToString();
 
     ctx.stats.timeString =
         ctx.timeString;
@@ -412,7 +412,7 @@ RenderContext PlaybackSession::BuildRenderContext(
         ctx.durationString;
 
     ctx.stats.hardwareDecode =
-        owner.IsHardwareDecode();
+        IsHardwareDecode();
 
     ctx.stats.speed =
         ctx.speed;
