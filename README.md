@@ -14,20 +14,23 @@
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
-| `Input/`（File/Network/RTSPClient） | ✅ 完成 | 协议工厂 + 超时注入 + 中断回调 |
-| `Sync/`（Audio/Video/MasterClock + Scheduler + Drop） | ✅ 完成 | 音频主时钟 + ffplay 级目标延迟调整 + 丢帧追赶 + 墙钟漂移校正 |
-| `Hardware/`（CUDAContext/HardwareDecoder） | ✅ 解码 / 🧪 渲染未做 | NVDEC/D3D11VA/DXVA2 解码 + 软解回退；**GPU 零拷贝渲染未实现**（回读 CPU） |
-| `Queue/` + `Network/NetworkBuffer` | ✅ 完成 | RAII 所有权 + 谓词等待 + GOP 感知丢包 |
-| `Decoder`（Video/Audio/Hardware） | ✅ 完成 | DecodeResult 三态（Success/NeedMore/End/Error） |
-| `Encoder/`（Video/Audio） | ✅ 完成 | libx264/libx265/nvenc；AAC/Opus |
-| `Muxer/`（FLV/HLS） | ✅ 完成 | FLV 文件/RTMP 推流、HLS 自动切片清理 |
-| `Filter/`（FilterGraph/Video/Audio） | ✅ 完成 | avfilter 通用封装，滤镜链配置（`video_filter`/`audio_filter`） |
-| `Subtitle/` | 🧪 实验性 | .srt 解析 + OSD 渲染已实现，**尚未用真实字幕文件端到端回归** |
-| `Screenshot/` | ✅ 完成 | PNG/JPG |
-| `Playlist/` | ✅ 完成 | 多文件连播（上一首/下一首/自动连播） |
-| `Seek/` | ✅ 完成 | 关键帧定位 + 解码器 flush + 代数防竞态 |
-| `Network/`（统计/缓冲/重连/推流/监控） | ✅ 完成 | 丢包率、缓冲水位、自动重连、RTMP 推流、健康巡检 |
+| `core/`（Player 门面 / PlaybackSession / MediaContext） | ✅ 完成 | 对外 API 门面 + 会话装配 / 主循环；内部实现已下沉，`Player.cpp` 收敛到 341 行 |
+| `pipeline/input/`（InputSource / File / Network / Camera） | ✅ 完成 | 协议工厂 + 超时注入 + 中断回调 |
+| `Sync/`（Master/Video/Audio/LiveClock + Scheduler + Drop） | ✅ 完成 | 音频主时钟 + ffplay 级目标延迟调整 + 丢帧追赶 + 墙钟漂移校正 |
+| `Hardware/`（CUDAContext / HardwareDecoder） | ✅ 解码 / 🧪 渲染未做 | NVDEC/D3D11VA/DXVA2 解码 + 软解回退；**GPU 零拷贝渲染未实现**（回读 CPU） |
+| `pipeline/queue/` + `streaming/NetworkBuffer` | ✅ 完成 | RAII 所有权 + 谓词等待 + GOP 感知丢包 |
+| `pipeline/video` + `pipeline/audio`（解码） | ✅ 完成 | DecodeResult 三态（Success/NeedMore/End/Error） |
+| `recording/`（VideoEncoder / AudioEncoder） | ✅ 完成 | libx264/libx265/nvenc；AAC/Opus |
+| `recording/`（Muxer / FLVMuxer / HLSMuxer） | ✅ 完成 | FLV 文件 / RTMP 推流、HLS 自动切片清理 |
+| `legacy/`（FilterGraph / VideoFilter / AudioFilter） | ⚠️ 已退役 | avfilter 封装曾实现但**从未接线**（LEGACY-005），已隔离到 `legacy/`，不参与编译 |
+| `features/subtitle/` | 🧪 实验性 | .srt 解析 + OSD 渲染已实现，**尚未用真实字幕文件端到端回归** |
+| `features/screenshot/` | ✅ 完成 | PNG/JPG |
+| `features/playlist/` | ✅ 完成 | 多文件连播（上一首/下一首/自动连播） |
+| `features/seek/` | ✅ 完成 | 关键帧定位 + 解码器 flush + 代数防竞态 |
+| `streaming/` + `recording/RTMPPublisher`（统计/缓冲/重连/推流/监控） | ✅ 完成 | 丢包率、缓冲水位、自动重连、RTMP 推流、健康巡检 |
 | `Config/` | ✅ 完成 | 自研轻量 JSON 解析，player.json + stream.json |
+
+> 表中路径为**重构后**（阶段 3–8）的实际位置；重构前的旧路径对照见「项目目录结构」。
 
 ### 网络与配置（7.x）
 - ✅ 统一输入层 `Input/`：`InputSource` 抽象基类 + 工厂（按 URL 协议自动创建），`FileInput`（本地文件，支持 `file://`）、`NetworkInput`（rtsp/rtmp/http/https/HLS，按协议注入 `rtsp_transport=tcp`、`stimeout`/`rw_timeout` 超时、`fflags=nobuffer` 低延迟选项）、`RTSPClient`（连接生命周期管理：连接 / 断开 / 自动重连，次数上限 + 间隔）
@@ -159,51 +162,23 @@ FFmpeg_text_claw.exe --screenshot-at 10 --screenshot-file out.bmp file.mp4   # �
 
 ## 播放器架构
 
-Player 作为控制中心，持有全部模块，三线程 + 主渲染循环：
+重构后为**分层单向依赖**架构：`app`（入口 / 输入适配）→ `core`（门面 + 会话）→ 功能层 → `pipeline` / `infra`。
+`core/Player` 只做对外门面，装配、主循环与模块协调在 `core/PlaybackSession`，子系统实例由 `core/MediaContext` 持有。
 
-```
-                +---------------------------+
-                |         Player            |  控制中心（状态机 + 线程管理）
-                +-------------+-------------+
-                              |
-        +---------------------+---------------------+
-        |                     |                     |
-        v                     v                     v
-+---------------+     +---------------+     +---------------+
-|  Demux Thread |     | Video Decode  |     | Audio Decode  |
-|  (Demuxer)    |     | Thread        |     | Thread        |
-|  av_read_frame|     | (VideoDecoder)|     | (AudioDecoder)|
-+-------+-------+     +-------+-------+     +-------+-------+
-        |                     |                     |
-        v                     v                     v
-+---------------+     +---------------+     +---------------+
-| PacketQueue   |     | PacketQueue   |     | AudioResampler|
-|  Video(120)   |     |  Audio(60)    |     |  → SwrContext |
-+---------------+     +---------------+     +-------+-------+
-                                              | PCMQueue
-                                              v
-                                     +---------------+
-                                     |  AudioDevice  |  SDL Audio 回调
-                                     | AudioClock    |  （音频主时钟）
-                                     | VolumeControl |
-                                     +---------------+
+```text
+main() → Player(门面) → PlaybackSession(装配 / 生命周期 / 主循环) → MediaContext{ demux · decoder · queue · clock · renderer · encoder … }
 
-+---------------+     +---------------+
-| FrameQueue    |     | SyncController|  音视频同步
-|  Video(12)    |     +---------------+
-+-------+-------+     +---------------+
-        |             | SeekController|  打断三队列→Seek→清队列→重置时钟
-        |             +---------------+
-        v             +---------------+
-+---------------+     | SpeedController| 变速
-| Renderer(SDL) |     +---------------+
-|  + OSDManager |     +---------------+
-|  + Subtitle   |     | SubtitleManager| .srt/.ass 解析
-+---------------+     +---------------+
-                      +---------------+
-                      | PlaylistManager| 列表 + 自动连播
-                      +---------------+
+L6  app/            main.cpp · EventController                     进程入口 + SDL 事件适配
+L5  core/           Player(门面) → PlaybackSession → MediaContext  对外 API / 会话生命周期 / 协调
+L4  features/ · streaming/ · recording/                            可选功能 / 直播缓冲 / 编码封装推流
+L3  output/         video(Renderer,VideoPresenter) · audio(AudioDevice) · osd(OSDManager,FontManager)
+L2  Sync/           Master/Video/Audio/LiveClock · SyncController · FrameScheduler · DropController
+L1  pipeline/       input → demux → video|audio decode → queue     纯数据流
+L0  infra/ · config/ · Hardware/                                   日志/错误/FFmpegPtr · 配置 · 硬解
 ```
+
+依赖规则：只允许**上层依赖下层**（`L(n) → L(m), m < n`）；`pipeline` / `Sync` / `output` / `infra` 不得反向依赖 `core/Player`。
+实测（阶段 8 收口）：全仓 include 扫描 **129 文件 / 247 条边 / 0 违规**，头文件级 **69 个 / 0 循环**；`core/Player.h` 的引用方仅 `core/` 自身 + `app/`。
 
 ### 线程模型
 
@@ -212,7 +187,7 @@ Player 作为控制中心，持有全部模块，三线程 + 主渲染循环：
 | Demux 线程 | `av_read_frame` → 按流类型分发到 Video/Audio PacketQueue |
 | Video Decode 线程 | 取视频包 → 解码 → clone 入 FrameQueue（最多 12 帧） |
 | Audio Decode 线程 | 取音频包 → 解码 → 重采样 → 变速 → Push 到 PCMQueue |
-| 主线程（Render） | 取视频帧 → 同步等待/丢帧 → SDL 渲染 + OSD + 事件处理 |
+| 主线程（Render，`PlaybackSession::RunLoop`） | 取视频帧 → 同步等待/丢帧 → SDL 渲染 + OSD + 事件处理 |
 
 ### 同步策略（音频主时钟）
 
@@ -220,6 +195,7 @@ Player 作为控制中心，持有全部模块，三线程 + 主渲染循环：
 - 视频提前：按剩余时间分片等待（≤100ms），避免阻塞过久
 - 视频落后 >50ms：直接丢帧追赶
 - 无音频流：按 `frameDuration / speed` 均匀播放（降级为 Video only mode）
+- 直播：`Sync/LiveClock` 策略——超前 >100ms / 落后 >50ms 直接丢帧追实时，且 `NextWaitMs` 恒为 0（见「直播 / 摄像头低延迟」）
 
 ### Seek 流程
 
@@ -231,8 +207,9 @@ Player 作为控制中心，持有全部模块，三线程 + 主渲染循环：
 
 ### 队列背压
 
-- `MAX_VIDEO_PACKETS = 120`、`MAX_AUDIO_PACKETS = 60`、`MAX_VIDEO_FRAMES = 12`（Player.h 常量）
-- 队列满时生产者等待，暂停即背压自停（不空转 CPU）
+- `MAX_VIDEO_PACKETS = 120`、`MAX_AUDIO_PACKETS = 60`、`MAX_VIDEO_FRAMES = 12`（`core/Player.h` 文件级常量，使用方为 `PlaybackSession`）
+- 队列满时生产者**谓词等待**（非轮询），暂停即背压自停（不空转 CPU）
+- 直播路径改走 `streaming/NetworkBuffer`（满丢最旧 + GOP 感知）；点播仍走 `pipeline/queue` 背压队列
 
 ---
 
@@ -271,7 +248,7 @@ Player 作为控制中心，持有全部模块，三线程 + 主渲染循环：
 ### 编译注意事项（踩坑记录）
 
 1. **源码编码**：源文件为 UTF-8 无 BOM 且含中文注释，所有 `.cpp` 必须加编译选项 `/utf-8`，否则 MSVC 按 GBK 解析产生乱码/警告（C4828）。
-2. **子目录 include**：`#include "Audio/PCMQueue.h"` 这类子目录引用，依赖 `$(ProjectDir);` 已加入 AdditionalIncludeDirectories。
+2. **工程根相对 include**：`#include "pipeline/audio/PCMQueue.h"`、`#include "core/Player.h"` 这类**从工程根起的相对路径**引用，依赖 `$(ProjectDir);` 已加入 AdditionalIncludeDirectories。
 3. **新增 .cpp 文件**：必须手动注册进 `.vcxproj` 和 `.vcxproj.filters`，否则不会被编译。
 4. **FFmpeg 8.x**：`qscale` 字段已移除，mjpeg 编码质量用 `av_opt_set_int(ctx, "q", 8, 0)`。
 5. **SDL_MAIN_HANDLED**：main.cpp 顶部已定义，避免 SDL 改写 Win32 入口。
@@ -282,49 +259,58 @@ Player 作为控制中心，持有全部模块，三线程 + 主渲染循环：
 
 ```
 FFmpeg_text_claw
-├── main.cpp                 # 入口：命令行解析（-v / --log-file）+ 播放列表
-├── Player.h / Player.cpp    # 控制中心：三线程 + 状态机 + 媒体切换
-├── Demuxer.h / .cpp         # 解封装：avformat_open_input / ReadPacket / Seek
-├── VideoDecoder.h / .cpp    # 视频解码（SendPacket / ReceiveFrame / Flush）
-├── AudioDecoder.h / .cpp    # 音频解码
-├── AudioDevice.h / .cpp     # SDL 音频输出（PCMQueue + AudioClock + 音量）
-├── AudioResampler.h / .cpp  # 重采样（SwrContext）
-├── Renderer.h / .cpp        # SDL 渲染（YUV 纹理）
-├── OSDManager.h / .cpp      # OSD：进度 / 状态 / 字幕 / 提示
-├── Event.h / .cpp           # 键盘事件 → 播放器控制
-├── FontManager.h / .cpp     # SDL_ttf 中文字体
-├── Screenshot.h / .cpp      # 截图（废弃，由 ScreenshotManager 取代）
-├── PlayerState.h            # 播放状态枚举
-├── Config\                 # ConfigManager（player.json / stream.json 轻量 JSON 解析）
-├── Input\                  # InputSource 工厂：FileInput / NetworkInput / CameraInput / RTSPClient
-├── Network\                # NetworkBuffer / BufferController / NetworkStatistics / StreamMonitor / RTMPPublisher
-├── Hardware\               # CUDAContext / HardwareDecoder（硬解 + 软解回退）
-├── Encoder\                # VideoEncoder（x264/x265/nvenc）/ AudioEncoder（AAC/Opus）
-├── Muxer\                  # FLVMuxer / HLSMuxer（录制 / 推流 / HLS 输出）
-├── Filter\                 # FilterGraph / VideoFilter / AudioFilter（avfilter 封装）
-├── Audio\                  # PCMQueue / SpeedController / VolumeController / AudioSpeedController
-├── Playlist\               # PlaylistManager（多文件 + 自动连播）
-├── Queue\                  # PacketQueue / FrameQueue
-├── Screenshot\             # ScreenshotManager（PNG/JPG）
-├── Seek\                   # SeekController
-├── Statistics\             # PlayerStatistics（缓冲统计）
-├── Subtitle\               # SubtitleManager（.srt / .ass 解析）
-├── Sync\                   # AudioClock / Clock / SyncController
-├── Utils\                  # Logger（日志系统）/ ErrorHandler / FFmpegPtr
-├── Font\simhei.ttf         # 中文字体
-├── rtsp_reconnect_test.ps1 # RTSP 断网重连快速验证（mediamtx + lavfi 推流，GOP=1s）
-├── rtsp_24h_test.ps1       # RTSP 24h 断网长测（48 轮断网/恢复，summary + 日志裁剪）
+├── app/                     # 入口 + 输入适配（唯一允许"知道全部"的壳）
+│   ├── main.cpp             # 命令行解析（-v / --log-file / --record / --push / --hls / --screenshot-at / --live-buffer）+ 播放列表
+│   └── EventController.{h,cpp}   # SDL 事件 / 快捷键 / 鼠标 → Player 门面命令（实现 core/IInputHandler）
+├── core/                    # 会话与门面
+│   ├── Player.{h,cpp}       # 对外 API 门面（薄；≈ 目标架构里的 PlayerFacade）
+│   ├── PlaybackSession.{h,cpp}   # 会话生命周期 / 子系统装配与释放 / 主循环 / 切媒体
+│   ├── MediaContext.h       # 子系统实例宿主（demux / decoder / queue / clock …）
+│   ├── IInputHandler.h      # 输入处理接口（由 app 注入）
+│   └── PlayerState.h        # 高层播放状态枚举
+├── pipeline/                # 数据流水线（input → demux → decode → queue）
+│   ├── input/               # InputSource 工厂：FileInput / NetworkInput / CameraInput
+│   ├── demux/               # Demuxer（avformat_open_input / ReadPacket / Seek）
+│   ├── video/               # VideoDecoder
+│   ├── audio/               # AudioDecoder / AudioResampler / PCMQueue / SpeedController / AudioSpeedController / VolumeController
+│   └── queue/               # PacketQueue / FrameQueue
+├── Sync/                    # MasterClock / VideoClock / AudioClock / LiveClock / SyncController / FrameScheduler / DropController
+├── output/                  # 输出侧
+│   ├── video/               # Renderer / VideoPresenter / RenderContext.h / ControlBarState.h
+│   ├── audio/               # AudioDevice（SDL 音频回调 + 音量）
+│   └── osd/                 # OSDManager / FontManager / StatsSnapshot.h
+├── streaming/               # NetworkBuffer / BufferController / NetworkStatistics / StreamMonitor
+├── recording/               # VideoEncoder / AudioEncoder / Muxer / FLVMuxer / HLSMuxer / RTMPPublisher / OutputPipeline
+├── features/                # 可选功能（经接口 / 上下文与 core 交互，不反向依赖 Player）
+│   ├── seek/                # SeekController
+│   ├── playlist/            # PlaylistManager
+│   ├── subtitle/            # SubtitleManager（.srt / .ass）
+│   ├── screenshot/          # ScreenshotManager（PNG / JPG）
+│   └── statistics/          # PlayerStatistics（缓冲统计）
+├── Hardware/                # CUDAContext / HardwareDecoder（NVDEC / D3D11VA / DXVA2 + 软解回退）
+├── Config/                  # ConfigManager + PlayerConfig.h / StreamConfig.h（player.json / stream.json）
+├── infra/                   # Logger / ErrorHandler / FFmpegPtr / DecodeResult
+├── legacy/                  # ⚠️ 隔离区（不在 vcxproj，不参与编译）：Decoder / Input / RTSPClient / Screenshot / Clock / Filter* / AudioMixer
+├── docs/architecture/       # 重构设计与阶段报告（target-architecture / dependency / migration-map / phase3~8 report）
+├── Font/simhei.ttf          # 中文字体
+├── vidio101/                # 测试样片（桌面「视频点播」junction 指向）
+├── a4c277.mp4               # 默认播放视频（代码内 kDefaultVideo）
+├── player.json / stream.json    # 运行配置
+├── rtsp_reconnect_test.ps1  # RTSP 断网重连快速验证（mediamtx + lavfi 推流，GOP=1s）
+├── rtsp_24h_test.ps1        # RTSP 24h 断网长测（48 轮断网/恢复，summary + 日志裁剪）
 ├── FFmpeg_text_claw.sln / .vcxproj
 └── README.md
 ```
 
-> `Decoder.*`、`Input.*`、`Audio\AudioMixer.*` 已从工程移除（磁盘保留，不参与编译）。
+> `legacy/` 为**隔离区**：`Decoder.*`、`Input.*`、`Screenshot.*`、`AudioMixer.*`、`Clock.*`、`Filter*`、`RTSPClient.*` 已从工程移除（仅磁盘保留，**不在 vcxproj 中、不参与编译**），登记见 `docs/architecture/legacy-register.md`。
+
+> 重构前旧路径 → 现路径：`Input/` → `pipeline/input/`；`Queue/` → `pipeline/queue/`；`Audio/` → `pipeline/audio/`；`Network/` → `streaming/`（其中 `RTMPPublisher` 归 `recording/`）；`Encoder/` + `Muxer/` → `recording/`；`Playlist/`、`Screenshot/`、`Seek/`、`Statistics/`、`Subtitle/` → `features/*/`；`Utils/` → `infra/`；`Filter/` → `legacy/`；`Clock.*` → `Sync/MasterClock.*`（旧文件留在 `legacy/`）。
 
 ---
 
 ## 日志系统
 
-轻量流式日志（`Utils\Logger.h/.cpp`），与 `std::cout` 同风格：
+轻量流式日志（`infra/Logger.h/.cpp`），与 `std::cout` 同风格：
 
 ```cpp
 Logger::Info()  << "[Main] Open : " << path << std::endl;
@@ -357,3 +343,13 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 - ✅（2026-08-16）**直播缓冲 v2**：stable/low_latency 双模式 + 滞回缓冲 + audioMs 口径修正 + 时钟重对齐，Wi-Fi 真流 25.6min 验证通过 —— 已提交 GitHub（feature/live-buffer 分支）
 - ?（2026-08-14）CUDA 硬解 `av_hwframe_transfer_data failed: Invalid argument` 修复（commit `8b7eb1e`）：帧池格式不匹配——`hw_frames_ctx` 的 `sw_format` 跟随解码器实际输出格式（如 yuv444p），不再每帧报错；hardware_decode=true 下硬解链路恢复
 - RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）
+
+- ✅（2026-10-08 → 2026-10-10）**代码架构重构（阶段 1 审计 → 8.7 收口）**：
+  - **目录分层**（阶段 3）：`app / core / pipeline / Sync / output / streaming / recording / features / Hardware / Config / infra` + `legacy/` 隔离
+  - **Player 收敛为薄门面**（阶段 4–8.5）：装配 / 主循环 / 协调下沉 `PlaybackSession`，子系统实例收敛 `MediaContext`；`core/Player.cpp` **3649 → 341 行**、`core/Player.h` **380 → 350 行**
+  - **拆除全部反向依赖**（阶段 8）：`output/video/Renderer`、`output/osd/OSDManager` 不再 `#include "Player.h"`（改用 `RenderContext` / `StatsSnapshot`）；`app/Event` → `app/EventController` + `core/IInputHandler` 接口注入
+  - **清理内部与死 getter**（phase 8.7）：`Player` 去掉 28 个仅内部使用 / 无人调用的 getter（−242 行），对外门面零改动
+  - **验证**：Debug / Release 均 **0 error**（warning 集合不变：C4828×20 + C4244×2）；三样例 `--record` FLV **逐位一致**（7280913 / 9666764 / 59694920 B）；`--screenshot-at` 像素指标一致；WM_CLOSE **exit=0**
+  - **依赖度量**：全仓 include 扫描 **129 文件 / 247 条边 / 0 违规**；头文件 **69 个 / 0 循环**
+  - 设计与阶段报告：`docs/architecture/`（`target-architecture.md`、`dependency.md`、`refactor-rules.md`、`phase3~8-report.md`）
+  - 提交：`2af4d01` 之后共 46 个提交，分支 `feature/live-buffer`（已推送 GitHub）
