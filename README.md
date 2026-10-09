@@ -30,97 +30,54 @@
 | `streaming/` + `recording/RTMPPublisher`（统计/缓冲/重连/推流/监控） | ✅ 完成 | 丢包率、缓冲水位、自动重连、RTMP 推流、健康巡检 |
 | `Config/` | ✅ 完成 | 自研轻量 JSON 解析，player.json + stream.json |
 
-> 表中路径为**重构后**（阶段 3–8）的实际位置；重构前的旧路径对照见「项目目录结构」。
-
-### 网络与配置（7.x）
-- ✅ 统一输入层 `Input/`：`InputSource` 抽象基类 + 工厂（按 URL 协议自动创建），`FileInput`（本地文件，支持 `file://`）、`NetworkInput`（rtsp/rtmp/http/https/HLS，按协议注入 `rtsp_transport=tcp`、`stimeout`/`rw_timeout` 超时、`fflags=nobuffer` 低延迟选项）、`RTSPClient`（连接生命周期管理：连接 / 断开 / 自动重连，次数上限 + 间隔）
-- ✅ 中断回调：`SetAbort()` 可打断阻塞中的网络读取（`av_read_frame` 立即返回），退出 / 切换媒体不再卡死
-- ✅ 直播 / 点播自动识别：RTSP/RTMP/时长未知流按直播处理（禁止 Seek、低延迟缓冲）；点播流可 Seek
-- ✅ 网络缓冲 `Network/NetworkBuffer`：满时丢最旧包（直播低延迟策略，区别于本地背压队列），带丢弃计数
-- ✅ **直播路径已接入 Player**：`useNetBuffer = demuxer->IsLive()`——直播流（RTSP/RTMP/推流中 HLS）自动走 NetworkBuffer（满丢最旧、低延迟），点播流走原 PacketQueue（满阻塞背压）；音频 NetBuffer cap = max(30, cap/2)、视频 cap = 600，缓冲目标 `bufferTargetMs = 300`（stream.json 可配）
-- ✅ HTTP HLS 崩溃修复：`OpenWithOptions` 改收 `AVDictionary**`（原按值传参，`avformat_open_input` 消费选项后 `av_dict_free(&opts)` 双重释放崩溃 0xC0000005）；`analyzeduration=1500000`、`probesize=300000` 修复 HLS/TS AAC 采样率未解析问题
-- ✅ 网络统计 `Network/NetworkStatistics`：1s 滑动窗口统计输入/输出 FPS、码率、丢包率、缓冲水位、延迟估算
-- ✅ 缓冲控制 `Network/BufferController`：低/高水位模型（NeedBuffer / IsEnough），直播目标 300ms、点播 2000ms
-- ✅ 配置系统 `Config/`：自研轻量 JSON 解析器，`player.json`（窗口/音量/速度/默认 URL/日志）+ `stream.json`（RTSP/RTMP/编码/缓冲/HLS/滤镜参数，为后续阶段预留），缺失时用默认值不报错
-
-### 断网自动恢复（8.3）
-- ✅ **断网自动重连**：直播流（RTSP/RTMP/HLS）断流时，Demux 线程检测到 `av_read_frame` 错误/EOF → 请求重连 → 主循环 `SwitchMedia` 循环重试（`reconnect_max_attempts` / `reconnect_delay_ms` 可配，≤0 表示无限重试，适合 24h 无人值守）→ 重连成功后自动恢复渲染
-- ✅ 重连目标 = `OpenMedia` 记录的 `currentMediaPath`；0x0 分辨率（SPS 未解析）提前失败走重试，等下一个关键帧；`max_analyze_duration` 5s→12s 覆盖 8s GOP
-- ✅ 实测：mediamtx + ffmpeg 合成推流（GOP=1s 每秒关键帧）模拟断网/恢复——断流检测 → **1.6s 重连成功 → 渲染恢复**；**24h 长测 48 轮全部跑完（2026-08-10 05:36 收尾）：38 次断流检测 37/38 重连成功 + 渲染恢复**，唯一失败 R26 是旧版 `maxAttempts=3×2s≈10s` 窗口 < 源停机 ~15s 所致（8.4 已改无限重试，不再有窗口限制）；另 8 轮“干净退出”为测试环境可见窗口被关，非播放器问题（脚本 `rtsp_reconnect_test.ps1` 快速验证 + `rtsp_24h_test.ps1` 长测，均已入仓）
-
-### 队列所有权与等待优化（8.4）
-- ✅ **队列 RAII 所有权改造**：`PacketQueue` / `FrameQueue` / `NetworkBuffer` 元素从裸指针改为 `PacketPtr` / `FramePtr`（`Utils/FFmpegPtr.h` 别名），Push 移动语义交接所有权、Pop 返回所有权，Demux → 队列 → 解码器全链路无共享裸指针，杜绝 double-free / use-after-free
-- ✅ **谓词等待替代轮询**：`cv.wait_for(10ms)` 轮询改为谓词等待（`cv.wait(lock, pred)` / `wait_for(lock, timeout, pred)`），条件满足（有数据 / 不满 / 打断）立即唤醒，不再空转
-- ✅ **队列唤醒配对（2026-08-10 修复，commit 097e8ba）**：谓词等待改为**无超时** `cv.wait` 后，生产者只能靠 `Pop` 的 `notify_all()` 唤醒——初期 `Pop` 漏了 notify，帧队列填满（`MAX_VIDEO_FRAMES=12`）后视频解码线程永久阻塞，渲染循环消费完队列后静默空转（**“13 帧冻结”**：渲染 ~12 帧后停滞、进程存活、无日志；直播/点播均复现）。`FrameQueue::Pop` / `PacketQueue::Pop` 出队后补 `cv.notify_all()`。回归验证：RTSP 15s 连续渲染 322 帧；4 阶段回归 15/16 PASS（唯一 FAIL 为脚本判定串措辞，实际通过）
-- ✅ **GOP 感知丢包**（直播 NetworkBuffer 满）：不再盲目丢最旧包（会撕裂 GOP 导致花屏），改为丢到关键帧边界——队头非关键帧时丢到第一个关键帧之前（保留完整 GOP 起点）；队头即关键帧时整段丢弃等下一个关键帧重建
-- ✅ **丢包统计打通**：NetworkBuffer 丢弃计数增量同步 `NetworkStatistics`（OSD 新增 Net 行显示 `Loss %`），丢包可观测
-- ✅ **可配置指数退避**：`reconnect_backoff_factor`（stream.json，默认 1.0 = 固定间隔，行为不变）；>1.0 开启 `delay * factor^(n-1)` 封顶 30s，长时间断网避免高频重试打服务器
-- ✅ **解码结果三态可区分**（评审七）：`ReceiveFrame()` 从裸指针升级为 `DecodeResult` 枚举（`Success / NeedMorePacket / End / Error`）——`avcodec_receive_frame` 的 EAGAIN（继续送包）、EOF（解码结束）、错误不再被吞成同一个 nullptr；VideoDecoder / AudioDecoder / HardwareDecoder 统一，调用方明确处理每种结果
-- ✅ **ffplay 级目标延迟调整**（评审五）：同步不再只是 `videoPts - masterTime` 误差计算——按视频时钟与主时钟偏差微调：视频领先时 `delay` 加长（轻微领先翻倍、大领先直接加偏差，等音频）；视频落后时 `delay` 缩短（最快立即显示），落后超过阈值仍由 DropController 丢帧追赶（连续判定 + 冷却防抖）
-- ✅ **音频墙钟漂移校正**（评审五）：AudioClock 跟踪媒体时间与真实时间累积偏差，渲染循环每秒渐进拉回（单次 ≤5ms 无感知，偏差 <10ms 不动），长期播放进度不再漂移
-- ✅ **解码路径诚实标注**（评审六）：OSD 显示 `(HW decode)` / `(SW decode)`；硬件状态如实声明——NVDEC/D3D11VA/DXVA2 解码已完成，渲染为 `av_hwframe_transfer_data` 回读 CPU → SDL 纹理，**GPU 零拷贝渲染未实现**（SDL2 无 CUDA/D3D11 互操作 API；OpenGL interop 在 Windows 不稳定），不宣称"GPU 渲染"
-
-### 直播 / 摄像头低延迟（8.5）
-- ✅ **`CameraInput` 摄像头输入**（`Input/CameraInput.h/.cpp`）：继承 `InputSource`，专门管理 RTSP 摄像头——地址（`Open(url)`）、摄像头参数（`SetConfig` / `SetTransport`：rtsp_transport=tcp 默认）、延迟配置（`SetLatencyMs`：>0 时 `max_delay=latencyMs` 毫秒，0 = 极限低延迟）；恒为直播（`IsLive()`=true，不可 Seek）、支持 Reconnect + 重连计数；工厂 `InputSource::Create` 对 `rtsp://` 自动路由到 CameraInput，其他网络协议仍走 NetworkInput，本地文件走 FileInput
-- ✅ **低延迟打开参数**（直播不能像 MP4 那样缓存）：`CameraInput::BuildOptions` 按需求原样注入 `fflags=nobuffer`（不预读，边收边播）+ `flags=low_delay` + `rtsp_transport=tcp`，再叠加 `max_delay`、`stimeout`/`rw_timeout` 超时、`analyzeduration=1500000`/`probesize=300000` 快速起播，统一传入 `avformat_open_input(ctx, url, nullptr, &opts)`
-- ✅ **解码级 low_delay**：`VideoDecoder::SetLowDelay(bool)` / `HardwareDecoder::SetLowDelay(bool)`（硬件路径 + 软解回退两处）——`avcodec_open2` 传 options 字典 `flags=low_delay`（`AV_CODEC_FLAG_LOW_DELAY`，AVCodecContext 合法选项，真正生效）；Player 直播时自动开启，点播保持默认
-- ✅ **PacketQueue 直播模式（LiveMode）**：`SetLiveMode(enable, timeBase, maxDurationMs)`——直播时 Push 不再因满而阻塞（背压会让 Demux 卡住、延迟无限累积），入队后按队首/队尾 pts 算队列时长，`queue_duration > 500ms`（`live_max_queue_ms` 可配）丢旧包追最新画面；丢包 GOP 感知（沿用 8.4 教训：非关键帧丢到关键帧为止，队头是关键帧则整段清空），带丢包计数（已接入 NetworkStatistics 统计）；直播音频队列已切换到 LiveMode（音频无解码依赖，丢弃安全），直播视频队列在 NetworkBuffer 上叠加了**时长上限**（`SetLiveDurationMs`，与包数上限双保险）
-- ✅ **SyncController 直播策略（LiveClock）**：新增 `Sync/LiveClock.h/.cpp`——直播时 `delay = videoPts - masterTime` 超过阈值（超前默认 100ms / 落后默认 50ms）就丢帧，例：网络延迟 1 秒 → `delay≈1s` 超阈值 → 丢帧 → 下一帧离实时更近 → 循环 → 恢复实时；`NextWaitMs` 直播恒返回 0（不等待，最低延迟），其余情况立即渲染；连续判定 + 冷却防抖与 DropController 一致；`SyncController::SetLiveMode(bool)` 一键切换直播/点播策略，Player `OpenMedia` 按 `demuxer->IsLive()` 自动路由
-- ✅ 新增配置：`live_max_queue_ms`（直播追最新阈值，默认 500）、`camera_latency_ms`（摄像头目标延迟，0 = 极限低延迟，默认 0），stream.json 可配
-
-### 编码 / 封装 / 推流 / 滤镜（7.x 第二阶段）
-- ✅ 视频编码 `Encoder/VideoEncoder`：libx264 / libx265 / h264_nvenc；直播低延迟（libx264 `tune=zerolatency`，nvenc `preset=ll` + `bf=0`），GOP=2s，输入 YUV420P
-- ✅ 音频编码 `Encoder/AudioEncoder`：AAC / Opus；内部 swr 自动重采样为编码器所需格式（AAC→FLTP）
-- ✅ 封装 `Muxer/`：`Muxer` 薄基类（AddStream / WritePacket 自动时间基转换 / 补写尾），`FLVMuxer`（.flv 文件或 rtmp://，支持关键帧起播），`HLSMuxer`（原生 hls muxer：hls_time / hls_list_size / delete_segments 自动切片与清理）
-- ✅ RTMP 推流 `Network/RTMPPublisher`：组合 FLVMuxer（RTMP 推送 = FLV 封装 + rtmp 协议），连接 / 断开 / 失败计数 / 断线重连（次数上限 + 间隔），从关键帧开始推（接收端立即起播）
-- ✅ 滤镜 `Filter/`：`FilterGraph`（avfilter 图封装：buffer/abuffer → 滤镜链 → buffersink），`VideoFilter`（scale / hflip / drawtext 等）、`AudioFilter`（volume / highpass / atempo 等）
-- ✅ 硬件解码 `Hardware/`：`CUDAContext`（CUDA → D3D11VA → DXVA2 自动探测降级，已在本机验证 cuda 可用）、`HardwareDecoder`（硬解 + 软解自动回退 + GPU 帧零拷贝，可共享 hw_frames_ctx 给 h264_nvenc）
-- ✅ 流监控 `Network/StreamMonitor`：每秒巡检网络流（延迟 / 丢包率 / 码率 / 缓冲 / FPS），阈值告警（延迟 ≥500ms、丢包 ≥1%、无数据 5s 判定断流），已接入 Player 渲染循环（仅网络流触发）
-- ✅ Player 集成：录制 / 推流 / HLS 开关（编码链接入播放主流程），CLI `--record/--push/--hls` 启动即输出，EOF 后 3 秒自动退出（批处理友好）
-- ✅ 直播低延迟实测：UDP mpegts（`udp://127.0.0.1:12345`）与 HTTP HLS 均验证通过——live 自动识别（`Network stream : http (live)`）、NetworkBuffer cap=600 target=300ms、源停后干净 EOF → 3s 自动退出、FLV 完整 20.000s；仅推流中的 m3u8 走 live 路径（静态 m3u8 按点播处理）
-- ✅ 硬解接入解码主链路：`stream.json` 的 `"hardware_decode": true` 开启（默认开）；Player 优先走 `HardwareDecoder`（NVDEC/D3D11VA/DXVA2），GPU 帧 transfer 回系统内存（NV12）后走原有渲染/输出链路（渲染转换器按实际帧格式惰性创建，自动适配 NV12/YUV420P）；失败自动回退软解。已验证：RTX4060 上 `h264 : cuda 640x360` 激活，录制 20s FLV 正常
-- ⚠ FLV/RTMP 格式限制：仅支持 H.264 + AAC（Opus 不能走 FLV/RTMP 路径）
+> 表中为当前实际路径；旧路径对照见「项目目录结构」。
 
 ### 播放核心
-- ✅ MP4 / 常见封装格式播放（FFmpeg 解封装）
-- ✅ H.264 / H.265 视频解码（libavcodec）
-- ✅ AAC 等音频解码 + 重采样（SwrContext，统一为 S16 / 48000Hz / 立体声）
-- ✅ 三线程架构：Demux 线程 / Video Decode 线程 / Audio Decode 线程（主线程负责渲染）
-- ✅ PacketQueue / FrameQueue 线程安全缓冲（带 max-size 背压）
-- ✅ 音频主时钟音视频同步（视频提前 ≤100ms 分片等待，落后 >50ms 丢帧；无音频时按帧率播放）
-- ✅ Seek 跳转（`av_seek_frame` + flush + 清队列 + 时钟重置，带中断保护防死锁）
-- ✅ 暂停 / 恢复（背压自停，不空转）
-- ✅ 变速播放（0.5x / 1x / 1.5x / 2x，音频重采样变速）
-- ✅ 音量控制（S16 采样缩放 + clamp）
+- ✅ 本地文件 / 网络流播放：MP4 等常见封装（FFmpeg 解封装）；rtsp / rtmp / http / https / HLS
+- ✅ H.264 / H.265 视频解码（libavcodec）；AAC 等音频解码 + 重采样（SwrContext，统一 S16 / 48000Hz / 立体声）
+- ✅ 三线程架构：Demux 线程 / Video Decode 线程 / Audio Decode 线程（主线程渲染）
+- ✅ PacketQueue / FrameQueue 线程安全缓冲：RAII 所有权（`PacketPtr` / `FramePtr`）+ 谓词等待背压（满则阻塞，暂停即自停）
+- ✅ 音频主时钟音视频同步（视频提前 ≤100ms 分片等待、落后 >50ms 丢帧；无音频按帧率播放）
+- ✅ Seek 跳转（`av_seek_frame` + flush + 清队列 + 时钟重置 + 中断保护）
+- ✅ 暂停 / 恢复、变速播放（0.5x / 1x / 1.5x / 2x）、音量控制
+
+### 网络与直播
+- ✅ 统一输入层：`InputSource` 抽象基类 + 工厂 —— `FileInput`（本地文件 / `file://`）、`NetworkInput`（rtsp / rtmp / http / https / HLS）、`CameraInput`（RTSP 摄像头）；按协议注入 `rtsp_transport=tcp`、超时、`fflags=nobuffer` 等选项
+- ✅ 直播 / 点播自动识别：时长未知的网络流按直播处理（禁 Seek、低延迟缓冲），点播流可 Seek
+- ✅ 中断回调 `SetAbort()`：可打断阻塞中的网络读取，退出 / 切换媒体不卡死
+- ✅ 断网自动重连：直播流断流 → 重连 → 自动恢复渲染；`reconnect_max_attempts` / `reconnect_delay_ms` / `reconnect_backoff_factor` 可配（≤0 = 无限重试，适合 24h 无人值守）
+- ✅ 低延迟直播：
+  - 打开参数 `fflags=nobuffer` + `flags=low_delay`
+  - 解码级 `SetLowDelay()`（硬件 + 软解两处）
+  - 直播队列 `LiveMode`：满不阻塞、按队列时长丢旧包追最新画面（GOP 感知，避免花屏）
+  - `Sync/LiveClock`：超前 >100ms / 落后 >50ms 直接丢帧追实时，`NextWaitMs` 恒为 0
+  - `CameraInput` 目标延迟 `camera_latency_ms`（0 = 极限低延迟）
+  - 实测：局域网 RTSP 摄像头端到端约 300ms
+- ✅ 直播缓冲：`live_buffer_mode` = `stable`（默认，滞回缓冲抗抖动）/ `low_latency`（追最新，约 300–600ms）；CLI `--live-buffer <ms>`
+- ✅ 丢包可观测 + 网络统计：`NetworkBuffer` 丢弃计数同步 `NetworkStatistics`（OSD `Net` 行显示 `Loss %`）；1s 滑动窗口统计输入/输出 FPS、码率、丢包率、缓冲水位、延迟估算
+- ✅ 缓冲控制 `BufferController`（低/高水位模型）+ 流监控 `StreamMonitor`（每秒巡检，阈值告警：延迟 ≥500ms、丢包 ≥1%、无数据 5s 判断流）
+- ✅ 配置系统 `Config/`：`player.json`（窗口 / 音量 / 速度 / 默认 URL / 日志）+ `stream.json`（RTSP/RTMP/编码/缓冲/HLS/滤镜参数），缺失用默认值
+
+### 编码 / 封装 / 推流
+- ✅ 视频编码 `VideoEncoder`：libx264 / libx265 / h264_nvenc（直播低延迟：libx264 `tune=zerolatency`、nvenc `preset=ll` + `bf=0`），GOP=2s，输入 YUV420P
+- ✅ 音频编码 `AudioEncoder`：AAC / Opus（内部 swr 自动重采样为编码器所需格式）
+- ✅ 封装 `Muxer`：`FLVMuxer`（.flv 文件或 rtmp://，支持关键帧起播）、`HLSMuxer`（原生 hls muxer，`hls_time` / `hls_list_size` / `delete_segments` 自动切片与清理）
+- ✅ RTMP 推流 `RTMPPublisher`：FLV 封装 + rtmp 协议，断线重连，从关键帧开始推
+- ✅ Player 集成：录制 / 推流 / HLS 开关接入播放主流程，CLI `--record` / `--push` / `--hls` 启动即输出，EOF 后 3s 自动退出（批处理友好）
+- ⚠️ FLV / RTMP 格式限制：仅支持 H.264 + AAC（Opus 不能走 FLV/RTMP 路径）
+
+### 硬件解码
+- ✅ `CUDAContext`：CUDA → D3D11VA → DXVA2 自动探测降级
+- ✅ `HardwareDecoder`：硬解 + 软解自动回退；`stream.json` 的 `"hardware_decode"`（默认开）优先走硬解，失败自动回退软解；OSD 如实标注 `(HW decode)` / `(SW decode)`
+- ⚠️ 渲染仍为 `av_hwframe_transfer_data` 回读 CPU → SDL 纹理，**GPU 零拷贝渲染未实现**（SDL2 无 CUDA/D3D11 互操作 API）
 
 ### 进阶功能
-- ✅ 播放列表：多文件播放、上一首 / 下一首、**EOF 自动播下一首**
-- ✅ 字幕：自动加载同名 .srt / .ass，OSD 底部渲染，可开关
-- ✅ OSD 屏幕显示：进度 / 时间 / 状态 / 提示，中文字体（Font/simhei.ttf）
-- ✅ 截图：PNG / JPG 一键保存（S / J 键）
-- ✅ 帧步进（暂停时逐帧查看，N 键）
-- ✅ 全屏切换（F 键）
-- ✅ 轻量日志系统：级别过滤（DEBUG/INFO/WARN/ERROR）、时间戳、`-v` 开 DEBUG、`--log-file` 写文件
-- ✅ 自动截图（回归核对用）：CLI `--screenshot-at <秒>` 播到指定时刻把**合成画面**（视频 + OSD + 控制栏，即 SDL 渲染目标）读回存成 24 位 BMP；`--screenshot-file <路径>` 可指定输出名（默认 `screenshot_at_<秒>s.bmp`）
-### 稳定版（8.14）：崩溃修复 / 点播 / 控制栏 / 循环回退 / 切歌修复
-- ✅ **无参数启动崩溃修复**：main.cpp 哨兵 `firstFile=-1` 越界读 `argv[-1]` → 0xC0000005（ucrtbased.dll），改为 `firstFile >= 0 && firstFile < argc`
-- ✅ **默认播放视频**：`kDefaultVideo` 常量改为项目根 `a4c277.mp4`（142s），无参数启动直接播放
-- ✅ **桌面点播链路**：9 种视频扩展名文件关联（`FFmpegPlayer.Video`）+ `ffmpegplayer:` 自定义协议 + 桌面「视频点播」junction → `vidio101/`；任意目录双击视频用本播放器打开
-- ✅ **控制栏 UI**：底部上一首 / 暂停 / 下一首按钮 + 可拖动进度条（鼠标事件，SDL_RenderGeometry 绘制）
-- ✅ **循环播放回退**：EOF 后停住（不再自动播下一首），保留手动按钮切歌；单文件播放时 `ExpandPlaylistWithSiblings` 自动扩展同目录视频供按钮切换
-- ✅ **切歌无声修复**：`SwitchMedia` 成功路径重置 `audioAbort`（原成功路径不重置 → 新音频流全部被丢弃 → 无声）
-- ✅ **字体路径修复**：`SDL_GetBasePath()` 定位 `Font/simhei.ttf`（任意工作目录 / 文件关联启动均正常出字）
-- ✅ **局域网摄像头直播链路**：mediamtx（RTSP:8554）+ B 机 ffmpeg 推流 + 本机播放器拉流，端到端 ~300ms 延迟
-- ⚠️ **缓冲实验已回退**：1~2s 播放端缓冲实测声音断续严重（门控无滞后回环 → 快速 toggle），已回退到稳定低延迟配置（直播 300ms / 队列 500ms）
-
-### 直播缓冲 v2（live-buffer，8.16）
-- ✅ **稳定模式（stable，默认）**：滞回缓冲抗抖动——缓冲不足时攒到 `buffer_target_ms`（默认 1500ms）才放行，播放中跌破极低水位（750ms，300ms 滞回）才重新缓冲，避免快速 toggle；吸收 Wi-Fi 级小抖动
-- ✅ **低延迟模式（low_latency）**：追最新画面（丢旧包），延迟约 300-600ms，适合强实时场景
-- ✅ **audioMs 口径修正（fix6）**：改为「音频时钟落后推流头部」`max(0, backPts - audioClock)`——PCM 积压（SDL 即时消费≈0）不再拖死缓冲水位判定导致无限 rebuffer
-- ✅ **时钟重对齐（fix2/fix4）**：idle/渲染路径 RELEASE 沿 `ResetClock(队首 pts)` + 等 pts 上限 `delay<=2.0`，渲染恢复即对齐
-- ✅ **门控精简（fix3）**：删除 AudioDecodeLoop 门控，PCM 3s 背压天然节流；NetworkBuffer 新增 `GetBackPts()`（队尾 pts）
-- ✅ 配置：`live_buffer_mode`（stable/low_latency）、`buffer_target_ms`（1500）、`live_max_queue_ms`（3000）；CLI `--live-buffer <ms>`（0 = low_latency，>0 = stable 目标）
-- ✅ 实测（8/16）：stable 55s（35s 连续 PLAYING，avsync ≈32ms）、low_latency 45s（underrun=0）、断流恢复 2s 自愈；**Wi-Fi 真流 25.6min：rebuffer 4 次共 8.3s（0.54%）、stall=0、稳态 avsync ≈28ms**，用户认可
+- ✅ 播放列表：多文件播放、上一首 / 下一首、EOF 自动播下一首
+- ✅ 字幕：自动加载同名 .srt / .ass，OSD 底部渲染，可开关（实验性，尚未用真实字幕文件端到端回归）
+- ✅ OSD：进度 / 时间 / 状态 / 提示，中文字体（`Font/simhei.ttf`）
+- ✅ 截图 PNG / JPG（`S` / `J` 键）；帧步进（`N`，暂停时）；全屏切换（`F`）
+- ✅ 自动截图（回归核对用）：CLI `--screenshot-at <秒>` 把合成画面（视频 + OSD + 控制栏）读回存 24 位 BMP，`--screenshot-file` 指定输出名
+- ✅ 日志系统：级别过滤（DEBUG/INFO/WARN/ERROR）、时间戳、`-v` 开 DEBUG、`--log-file` 写文件
 
 ---
 
@@ -178,7 +135,7 @@ L0  infra/ · config/ · Hardware/                                   日志/错�
 ```
 
 依赖规则：只允许**上层依赖下层**（`L(n) → L(m), m < n`）；`pipeline` / `Sync` / `output` / `infra` 不得反向依赖 `core/Player`。
-实测（阶段 8 收口）：全仓 include 扫描 **129 文件 / 247 条边 / 0 违规**，头文件级 **69 个 / 0 循环**；`core/Player.h` 的引用方仅 `core/` 自身 + `app/`。
+依赖实测：全仓 include 扫描 **129 文件 / 247 条边 / 0 违规**，头文件级 **69 个 / 0 循环**；`core/Player.h` 的引用方仅 `core/` 自身 + `app/`。
 
 ### 线程模型
 
@@ -195,7 +152,7 @@ L0  infra/ · config/ · Hardware/                                   日志/错�
 - 视频提前：按剩余时间分片等待（≤100ms），避免阻塞过久
 - 视频落后 >50ms：直接丢帧追赶
 - 无音频流：按 `frameDuration / speed` 均匀播放（降级为 Video only mode）
-- 直播：`Sync/LiveClock` 策略——超前 >100ms / 落后 >50ms 直接丢帧追实时，且 `NextWaitMs` 恒为 0（见「直播 / 摄像头低延迟」）
+- 直播：`Sync/LiveClock` 策略——超前 >100ms / 落后 >50ms 直接丢帧追实时，且 `NextWaitMs` 恒为 0（见「网络与直播」）
 
 ### Seek 流程
 
@@ -322,34 +279,3 @@ Logger::Error() << "[Main] Init failed" << std::endl;
 - 级别：DEBUG / INFO / WARN / ERROR，默认 INFO（`-v` 开启 DEBUG）
 - 线程安全（原子级别 + 互斥锁）；被过滤的高频日志零开销
 - `--log-file xxx.log` 同时写文件（追加模式）
-
----
-
-## 后续计划
-
-- ✅（2026-08-08）编码 / 封装 / 推流 / 滤镜 / 硬件解码 / 流监控模块完成（7.4–7.9）
-- ✅（2026-08-08）编码链接入 Player（录制 / 推流 / HLS 开关）+ 硬解接入解码主链路（hardware_decode 配置，NVDEC 验证通过）
-- ✅（2026-08-08）直播播放路径切 NetworkBuffer（丢最旧，真低延迟）——已完成，UDP/HTTP HLS 实测通过（见功能清单）
-- ✅（2026-08-09）RTSP 断网自动重连（8.3）——断流检测 + 自动重连 + 渲染恢复；24h 断网长测进行中（16/48 轮全 PASS），模拟验证全覆盖
-- ✅（2026-08-09）队列 RAII 所有权 + 谓词等待 + GOP 感知丢包（8.4）——评审意见（裸指针隐患 / 10ms 轮询 / 丢包策略 / 丢包可观测）落实；24h 长测结束后部署正式编译 + 回归
-- ✅（2026-08-09）评审五/六/七落实（8.4）：解码三态 DecodeResult、ffplay 级目标延迟调整、音频墙钟漂移校正、解码路径诚实标注 + 模块状态总表
-- ✅（2026-08-10）**13 帧渲染冻结根因定位并修复**（git bisect → 8e006b7 引入）：队列 `Pop` 缺 `notify_all()` 导致无超时谓词等待的生产者永久阻塞（commit 097e8ba）；4 阶段回归 15/16 PASS，RTSP 连续渲染恢复
-- 播放器 UI 完善
-- 真实字幕文件端到端验证（.srt 渲染已实现，尚未用真实文件回归）
-- RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）
-
-- ✅（2026-08-14）**稳定版收尾（8.14）**：无参数崩溃修复、默认视频 a4c277.mp4、桌面点播链路（文件关联 + ffmpegplayer: 协议）、控制栏 UI、循环回退（EOF 停住）、切歌无声修复（audioAbort）、字体路径修复（SDL_GetBasePath）、局域网摄像头直播链路验证 —— 已提交 GitHub
-- ✅（2026-08-14）**缓冲实验回退**：1~2s 播放端缓冲实测声音断续（门控无滞后回环 → pause/resume 快速震荡），回退到稳定低延迟配置 —— 后续已由 **v2 live-buffer 稳定模式**（滞回缓冲，8/16，见上）实现并验证
-- ✅（2026-08-16）**直播缓冲 v2**：stable/low_latency 双模式 + 滞回缓冲 + audioMs 口径修正 + 时钟重对齐，Wi-Fi 真流 25.6min 验证通过 —— 已提交 GitHub（feature/live-buffer 分支）
-- ?（2026-08-14）CUDA 硬解 `av_hwframe_transfer_data failed: Invalid argument` 修复（commit `8b7eb1e`）：帧池格式不匹配——`hw_frames_ctx` 的 `sw_format` 跟随解码器实际输出格式（如 yuv444p），不再每帧报错；hardware_decode=true 下硬解链路恢复
-- RTSP 真机验证（模拟流已全覆盖；摄像头地址待提供）
-
-- ✅（2026-10-08 → 2026-10-10）**代码架构重构（阶段 1 审计 → 8.7 收口）**：
-  - **目录分层**（阶段 3）：`app / core / pipeline / Sync / output / streaming / recording / features / Hardware / Config / infra` + `legacy/` 隔离
-  - **Player 收敛为薄门面**（阶段 4–8.5）：装配 / 主循环 / 协调下沉 `PlaybackSession`，子系统实例收敛 `MediaContext`；`core/Player.cpp` **3649 → 341 行**、`core/Player.h` **380 → 350 行**
-  - **拆除全部反向依赖**（阶段 8）：`output/video/Renderer`、`output/osd/OSDManager` 不再 `#include "Player.h"`（改用 `RenderContext` / `StatsSnapshot`）；`app/Event` → `app/EventController` + `core/IInputHandler` 接口注入
-  - **清理内部与死 getter**（phase 8.7）：`Player` 去掉 28 个仅内部使用 / 无人调用的 getter（−242 行），对外门面零改动
-  - **验证**：Debug / Release 均 **0 error**（warning 集合不变：C4828×20 + C4244×2）；三样例 `--record` FLV **逐位一致**（7280913 / 9666764 / 59694920 B）；`--screenshot-at` 像素指标一致；WM_CLOSE **exit=0**
-  - **依赖度量**：全仓 include 扫描 **129 文件 / 247 条边 / 0 违规**；头文件 **69 个 / 0 循环**
-  - 设计与阶段报告：`docs/architecture/`（`target-architecture.md`、`dependency.md`、`refactor-rules.md`、`phase3~8-report.md`）
-  - 提交：`2af4d01` 之后共 46 个提交，分支 `feature/live-buffer`（已推送 GitHub）
