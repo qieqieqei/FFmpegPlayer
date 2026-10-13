@@ -1,363 +1,411 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="婧愭枃浠?>
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    <Filter Include="app">
+      <UniqueIdentifier>{EAA35339-AC98-835C-3062-18294CB0CEEC}</UniqueIdentifier>
     </Filter>
-    <Filter Include="澶存枃浠?>
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    <Filter Include="config">
+      <UniqueIdentifier>{C3CF6DC5-1BCA-B981-0DD3-6F6D1190DB22}</UniqueIdentifier>
     </Filter>
-    <Filter Include="璧勬簮鏂囦欢">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    <Filter Include="core">
+      <UniqueIdentifier>{37B774BB-AE2F-3143-4C83-913C5623A2DB}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Audio">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000001}</UniqueIdentifier>
+    <Filter Include="features">
+      <UniqueIdentifier>{96790BF6-C975-5DAC-1125-284F6EB00CE0}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Queue">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000002}</UniqueIdentifier>
+    <Filter Include="features\playlist">
+      <UniqueIdentifier>{0AD7D32C-34F2-2B26-810F-18DDAB0F6EA2}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Sync">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000003}</UniqueIdentifier>
+    <Filter Include="features\screenshot">
+      <UniqueIdentifier>{B309B242-E191-D93D-FD33-288A9AF6FEAC}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Screenshot">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000004}</UniqueIdentifier>
+    <Filter Include="features\seek">
+      <UniqueIdentifier>{C82EB8CE-C101-D553-E2B6-1337A79F2298}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Statistics">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000005}</UniqueIdentifier>
+    <Filter Include="features\statistics">
+      <UniqueIdentifier>{058B1A61-1753-BB18-075E-BF6CF980D170}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Utils">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000006}</UniqueIdentifier>
+    <Filter Include="features\subtitle">
+      <UniqueIdentifier>{824734EA-4D80-B24E-4351-CB6F323EDE4C}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Seek">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000007}</UniqueIdentifier>
+    <Filter Include="hardware">
+      <UniqueIdentifier>{B2951A95-E158-2E2B-633E-0A2BF97B9014}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Subtitle">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000008}</UniqueIdentifier>
+    <Filter Include="infra">
+      <UniqueIdentifier>{FF93EB00-379B-2A57-6CB0-5DFDA498C67E}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Playlist">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000009}</UniqueIdentifier>
+    <Filter Include="output">
+      <UniqueIdentifier>{3622A866-FFA7-5AA6-8CFD-08DE5800E9B5}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Config">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000A}</UniqueIdentifier>
+    <Filter Include="output\audio">
+      <UniqueIdentifier>{96CA319F-C67C-64D1-FD7D-83C00944276A}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Input">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000B}</UniqueIdentifier>
+    <Filter Include="output\osd">
+      <UniqueIdentifier>{5BEE49F5-419B-94C5-CDF2-3133A6AA59BB}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Network">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000C}</UniqueIdentifier>
+    <Filter Include="output\video">
+      <UniqueIdentifier>{8AC17E48-3DDC-EC6B-4015-9A561349EEDC}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Encoder">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000D}</UniqueIdentifier>
+    <Filter Include="pipeline">
+      <UniqueIdentifier>{7F4EF051-E2AC-5B7B-BA9D-9C2B9FE2A16F}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Muxer">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000E}</UniqueIdentifier>
+    <Filter Include="pipeline\audio">
+      <UniqueIdentifier>{50085FE8-7707-22C9-33C2-4AA9CCA93472}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Filter">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-00000000000F}</UniqueIdentifier>
+    <Filter Include="pipeline\demux">
+      <UniqueIdentifier>{292419D5-C33A-FFEE-E331-9FD6DC6BBB75}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Hardware">
-      <UniqueIdentifier>{8A7E6F01-0000-4A00-8000-000000000010}</UniqueIdentifier>
+    <Filter Include="pipeline\input">
+      <UniqueIdentifier>{5A2A17CE-443B-B28A-D7C7-796061460950}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="pipeline\queue">
+      <UniqueIdentifier>{A8A73E6B-B9CB-59D7-5C37-117BCA533350}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="pipeline\video">
+      <UniqueIdentifier>{86A34617-B408-EA8B-5FC0-22F547A0208C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="recording">
+      <UniqueIdentifier>{9293FCCA-AC33-4973-A63C-605E3CF79875}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="streaming">
+      <UniqueIdentifier>{7FBFB9E2-6DD7-DD4F-39DD-47A2BDC27942}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="sync">
+      <UniqueIdentifier>{6019C476-145F-62CE-5508-1A568D8F0D4A}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="app\main.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
-    <ClCompile Include="output\video\Renderer.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
-    <ClCompile Include="output\video\VideoPresenter.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\demux\Demuxer.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
-    <ClCompile Include="recording\AudioEncoder.cpp">
-      <Filter>Encoder</Filter>
-    </ClCompile>
-    <ClCompile Include="recording\VideoEncoder.cpp">
-      <Filter>Encoder</Filter>
-    </ClCompile>
-    <ClCompile Include="recording\FLVMuxer.cpp">
-      <Filter>Muxer</Filter>
-    </ClCompile>
-    <ClCompile Include="recording\HLSMuxer.cpp">
-      <Filter>Muxer</Filter>
-    </ClCompile>
-    <ClCompile Include="recording\Muxer.cpp">
-      <Filter>Muxer</Filter>
-    </ClCompile>
-    <ClCompile Include="hardware\CUDAContext.cpp">
-      <Filter>Hardware</Filter>
-    </ClCompile>
-    <ClCompile Include="hardware\HardwareDecoder.cpp">
-      <Filter>Hardware</Filter>
-    </ClCompile>
-    <ClCompile Include="streaming\StreamMonitor.cpp">
-      <Filter>Network</Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\video\VideoDecoder.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
-    <ClCompile Include="core\Player.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
-    <ClCompile Include="core\PlaybackSession.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
     <ClCompile Include="app\EventController.cpp">
-      <Filter>婧愭枃浠?/Filter>
+      <Filter>app</Filter>
     </ClCompile>
-    <ClCompile Include="output\osd\FontManager.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
-    <ClCompile Include="output\osd\OSDManager.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\audio\AudioDecoder.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\audio\AudioResampler.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
-    <ClCompile Include="output\audio\AudioDevice.cpp">
-      <Filter>婧愭枃浠?/Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\audio\AudioSpeedController.cpp">
-      <Filter>Audio</Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\audio\PCMQueue.cpp">
-      <Filter>Audio</Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\audio\SpeedController.cpp">
-      <Filter>Audio</Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\audio\VolumeController.cpp">
-      <Filter>Audio</Filter>
+    <ClCompile Include="app\main.cpp">
+      <Filter>app</Filter>
     </ClCompile>
     <ClCompile Include="config\ConfigManager.cpp">
-      <Filter>Config</Filter>
+      <Filter>config</Filter>
     </ClCompile>
-    <ClCompile Include="pipeline\input\InputSource.cpp">
-      <Filter>Input</Filter>
+    <ClCompile Include="core\PlaybackSession.cpp">
+      <Filter>core</Filter>
     </ClCompile>
-    <ClCompile Include="pipeline\input\CameraInput.cpp">
-      <Filter>Input</Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\input\FileInput.cpp">
-      <Filter>Input</Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\input\NetworkInput.cpp">
-      <Filter>Input</Filter>
-    </ClCompile>
-    <ClCompile Include="streaming\NetworkBuffer.cpp">
-      <Filter>Network</Filter>
-    </ClCompile>
-    <ClCompile Include="streaming\NetworkStatistics.cpp">
-      <Filter>Network</Filter>
-    </ClCompile>
-    <ClCompile Include="streaming\BufferController.cpp">
-      <Filter>Network</Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\queue\PacketQueue.cpp">
-      <Filter>Queue</Filter>
-    </ClCompile>
-    <ClCompile Include="pipeline\queue\FrameQueue.cpp">
-      <Filter>Queue</Filter>
-    </ClCompile>
-    <ClCompile Include="sync\AudioClock.cpp">
-      <Filter>Sync</Filter>
-    </ClCompile>
-    <ClCompile Include="sync\LiveClock.cpp">
-      <Filter>Sync</Filter>
-    </ClCompile>
-    <ClCompile Include="sync\SyncController.cpp">
-      <Filter>Sync</Filter>
-    </ClCompile>
-    <ClCompile Include="features\seek\SeekController.cpp">
-      <Filter>Seek</Filter>
-    </ClCompile>
-    <ClCompile Include="features\screenshot\ScreenshotManager.cpp">
-      <Filter>Screenshot</Filter>
-    </ClCompile>
-    <ClCompile Include="features\statistics\PlayerStatistics.cpp">
-      <Filter>Statistics</Filter>
-    </ClCompile>
-    <ClCompile Include="features\subtitle\SubtitleManager.cpp">
-      <Filter>Subtitle</Filter>
+    <ClCompile Include="core\Player.cpp">
+      <Filter>core</Filter>
     </ClCompile>
     <ClCompile Include="features\playlist\PlaylistManager.cpp">
-      <Filter>Playlist</Filter>
+      <Filter>features\playlist</Filter>
+    </ClCompile>
+    <ClCompile Include="features\screenshot\ScreenshotManager.cpp">
+      <Filter>features\screenshot</Filter>
+    </ClCompile>
+    <ClCompile Include="features\seek\SeekController.cpp">
+      <Filter>features\seek</Filter>
+    </ClCompile>
+    <ClCompile Include="features\statistics\PlayerStatistics.cpp">
+      <Filter>features\statistics</Filter>
+    </ClCompile>
+    <ClCompile Include="features\subtitle\SubtitleManager.cpp">
+      <Filter>features\subtitle</Filter>
+    </ClCompile>
+    <ClCompile Include="hardware\CUDAContext.cpp">
+      <Filter>hardware</Filter>
+    </ClCompile>
+    <ClCompile Include="hardware\HardwareDecoder.cpp">
+      <Filter>hardware</Filter>
     </ClCompile>
     <ClCompile Include="infra\ErrorHandler.cpp">
-      <Filter>Utils</Filter>
+      <Filter>infra</Filter>
     </ClCompile>
     <ClCompile Include="infra\Logger.cpp">
-      <Filter>Utils</Filter>
+      <Filter>infra</Filter>
+    </ClCompile>
+    <ClCompile Include="output\audio\AudioDevice.cpp">
+      <Filter>output\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="output\osd\FontManager.cpp">
+      <Filter>output\osd</Filter>
+    </ClCompile>
+    <ClCompile Include="output\osd\OSDManager.cpp">
+      <Filter>output\osd</Filter>
+    </ClCompile>
+    <ClCompile Include="output\video\Renderer.cpp">
+      <Filter>output\video</Filter>
+    </ClCompile>
+    <ClCompile Include="output\video\VideoPresenter.cpp">
+      <Filter>output\video</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\audio\AudioDecoder.cpp">
+      <Filter>pipeline\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\audio\AudioResampler.cpp">
+      <Filter>pipeline\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\audio\AudioSpeedController.cpp">
+      <Filter>pipeline\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\audio\PCMQueue.cpp">
+      <Filter>pipeline\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\audio\SpeedController.cpp">
+      <Filter>pipeline\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\audio\VolumeController.cpp">
+      <Filter>pipeline\audio</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\demux\Demuxer.cpp">
+      <Filter>pipeline\demux</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\input\CameraInput.cpp">
+      <Filter>pipeline\input</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\input\FileInput.cpp">
+      <Filter>pipeline\input</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\input\InputSource.cpp">
+      <Filter>pipeline\input</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\input\NetworkInput.cpp">
+      <Filter>pipeline\input</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\queue\FrameQueue.cpp">
+      <Filter>pipeline\queue</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\queue\PacketQueue.cpp">
+      <Filter>pipeline\queue</Filter>
+    </ClCompile>
+    <ClCompile Include="pipeline\video\VideoDecoder.cpp">
+      <Filter>pipeline\video</Filter>
+    </ClCompile>
+    <ClCompile Include="recording\AudioEncoder.cpp">
+      <Filter>recording</Filter>
+    </ClCompile>
+    <ClCompile Include="recording\FLVMuxer.cpp">
+      <Filter>recording</Filter>
+    </ClCompile>
+    <ClCompile Include="recording\HLSMuxer.cpp">
+      <Filter>recording</Filter>
+    </ClCompile>
+    <ClCompile Include="recording\Muxer.cpp">
+      <Filter>recording</Filter>
+    </ClCompile>
+    <ClCompile Include="recording\OutputPipeline.cpp">
+      <Filter>recording</Filter>
+    </ClCompile>
+    <ClCompile Include="recording\RTMPPublisher.cpp">
+      <Filter>recording</Filter>
+    </ClCompile>
+    <ClCompile Include="recording\VideoEncoder.cpp">
+      <Filter>recording</Filter>
+    </ClCompile>
+    <ClCompile Include="streaming\BufferController.cpp">
+      <Filter>streaming</Filter>
+    </ClCompile>
+    <ClCompile Include="streaming\NetworkBuffer.cpp">
+      <Filter>streaming</Filter>
+    </ClCompile>
+    <ClCompile Include="streaming\NetworkStatistics.cpp">
+      <Filter>streaming</Filter>
+    </ClCompile>
+    <ClCompile Include="streaming\StreamMonitor.cpp">
+      <Filter>streaming</Filter>
+    </ClCompile>
+    <ClCompile Include="sync\AudioClock.cpp">
+      <Filter>sync</Filter>
+    </ClCompile>
+    <ClCompile Include="sync\DropController.cpp">
+      <Filter>sync</Filter>
+    </ClCompile>
+    <ClCompile Include="sync\FrameScheduler.cpp">
+      <Filter>sync</Filter>
+    </ClCompile>
+    <ClCompile Include="sync\LiveClock.cpp">
+      <Filter>sync</Filter>
+    </ClCompile>
+    <ClCompile Include="sync\MasterClock.cpp">
+      <Filter>sync</Filter>
+    </ClCompile>
+    <ClCompile Include="sync\SyncController.cpp">
+      <Filter>sync</Filter>
+    </ClCompile>
+    <ClCompile Include="sync\VideoClock.cpp">
+      <Filter>sync</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="pipeline\demux\Demuxer.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="recording\AudioEncoder.h">
-      <Filter>Encoder</Filter>
-    </ClInclude>
-    <ClInclude Include="recording\VideoEncoder.h">
-      <Filter>Encoder</Filter>
-    </ClInclude>
-    <ClInclude Include="recording\FLVMuxer.h">
-      <Filter>Muxer</Filter>
-    </ClInclude>
-    <ClInclude Include="recording\HLSMuxer.h">
-      <Filter>Muxer</Filter>
-    </ClInclude>
-    <ClInclude Include="recording\Muxer.h">
-      <Filter>Muxer</Filter>
-    </ClInclude>
-    <ClInclude Include="hardware\CUDAContext.h">
-      <Filter>Hardware</Filter>
-    </ClInclude>
-    <ClInclude Include="hardware\HardwareDecoder.h">
-      <Filter>Hardware</Filter>
-    </ClInclude>
-    <ClInclude Include="streaming\StreamMonitor.h">
-      <Filter>Network</Filter>
-    </ClInclude>
-    <ClInclude Include="pipeline\video\VideoDecoder.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="output\video\Renderer.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="output\video\RenderContext.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="output\video\ControlBarState.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="output\video\VideoPresenter.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="core\Player.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="core\IInputHandler.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="core\PlayerState.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="core\MediaContext.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="core\PlaybackSession.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
     <ClInclude Include="app\EventController.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="output\osd\FontManager.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="output\osd\OSDManager.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="output\osd\StatsSnapshot.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="pipeline\audio\AudioDecoder.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="pipeline\audio\AudioResampler.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="output\audio\AudioDevice.h">
-      <Filter>澶存枃浠?/Filter>
-    </ClInclude>
-    <ClInclude Include="pipeline\audio\AudioSpeedController.h">
-      <Filter>Audio</Filter>
-    </ClInclude>
-    <ClInclude Include="pipeline\audio\PCMQueue.h">
-      <Filter>Audio</Filter>
-    </ClInclude>
-    <ClInclude Include="pipeline\audio\SpeedController.h">
-      <Filter>Audio</Filter>
-    </ClInclude>
-    <ClInclude Include="pipeline\audio\VolumeController.h">
-      <Filter>Audio</Filter>
+      <Filter>app</Filter>
     </ClInclude>
     <ClInclude Include="config\ConfigManager.h">
-      <Filter>Config</Filter>
+      <Filter>config</Filter>
     </ClInclude>
     <ClInclude Include="config\PlayerConfig.h">
-      <Filter>Config</Filter>
+      <Filter>config</Filter>
     </ClInclude>
     <ClInclude Include="config\StreamConfig.h">
-      <Filter>Config</Filter>
+      <Filter>config</Filter>
     </ClInclude>
-    <ClInclude Include="pipeline\input\InputSource.h">
-      <Filter>Input</Filter>
+    <ClInclude Include="core\IInputHandler.h">
+      <Filter>core</Filter>
     </ClInclude>
-    <ClInclude Include="pipeline\input\CameraInput.h">
-      <Filter>Input</Filter>
+    <ClInclude Include="core\MediaContext.h">
+      <Filter>core</Filter>
     </ClInclude>
-    <ClInclude Include="pipeline\input\FileInput.h">
-      <Filter>Input</Filter>
+    <ClInclude Include="core\PlaybackSession.h">
+      <Filter>core</Filter>
     </ClInclude>
-    <ClInclude Include="pipeline\input\NetworkInput.h">
-      <Filter>Input</Filter>
+    <ClInclude Include="core\Player.h">
+      <Filter>core</Filter>
     </ClInclude>
-    <ClInclude Include="streaming\NetworkBuffer.h">
-      <Filter>Network</Filter>
-    </ClInclude>
-    <ClInclude Include="streaming\NetworkStatistics.h">
-      <Filter>Network</Filter>
-    </ClInclude>
-    <ClInclude Include="streaming\BufferController.h">
-      <Filter>Network</Filter>
-    </ClInclude>
-    <ClInclude Include="pipeline\queue\PacketQueue.h">
-      <Filter>Queue</Filter>
-    </ClInclude>
-    <ClInclude Include="pipeline\queue\FrameQueue.h">
-      <Filter>Queue</Filter>
-    </ClInclude>
-    <ClInclude Include="sync\AudioClock.h">
-      <Filter>Sync</Filter>
-    </ClInclude>
-    <ClInclude Include="sync\LiveClock.h">
-      <Filter>Sync</Filter>
-    </ClInclude>
-    <ClInclude Include="sync\SyncController.h">
-      <Filter>Sync</Filter>
-    </ClInclude>
-    <ClInclude Include="features\seek\SeekController.h">
-      <Filter>Seek</Filter>
-    </ClInclude>
-    <ClInclude Include="features\screenshot\ScreenshotManager.h">
-      <Filter>Screenshot</Filter>
-    </ClInclude>
-    <ClInclude Include="features\statistics\PlayerStatistics.h">
-      <Filter>Statistics</Filter>
-    </ClInclude>
-    <ClInclude Include="features\subtitle\SubtitleManager.h">
-      <Filter>Subtitle</Filter>
+    <ClInclude Include="core\PlayerState.h">
+      <Filter>core</Filter>
     </ClInclude>
     <ClInclude Include="features\playlist\PlaylistManager.h">
-      <Filter>Playlist</Filter>
+      <Filter>features\playlist</Filter>
+    </ClInclude>
+    <ClInclude Include="features\screenshot\ScreenshotManager.h">
+      <Filter>features\screenshot</Filter>
+    </ClInclude>
+    <ClInclude Include="features\seek\SeekController.h">
+      <Filter>features\seek</Filter>
+    </ClInclude>
+    <ClInclude Include="features\statistics\PlayerStatistics.h">
+      <Filter>features\statistics</Filter>
+    </ClInclude>
+    <ClInclude Include="features\subtitle\SubtitleManager.h">
+      <Filter>features\subtitle</Filter>
+    </ClInclude>
+    <ClInclude Include="hardware\CUDAContext.h">
+      <Filter>hardware</Filter>
+    </ClInclude>
+    <ClInclude Include="hardware\HardwareDecoder.h">
+      <Filter>hardware</Filter>
     </ClInclude>
     <ClInclude Include="infra\ErrorHandler.h">
-      <Filter>Utils</Filter>
+      <Filter>infra</Filter>
     </ClInclude>
     <ClInclude Include="infra\FFmpegPtr.h">
-      <Filter>Utils</Filter>
+      <Filter>infra</Filter>
     </ClInclude>
     <ClInclude Include="infra\Logger.h">
-      <Filter>Utils</Filter>
+      <Filter>infra</Filter>
+    </ClInclude>
+    <ClInclude Include="output\audio\AudioDevice.h">
+      <Filter>output\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="output\osd\FontManager.h">
+      <Filter>output\osd</Filter>
+    </ClInclude>
+    <ClInclude Include="output\osd\OSDManager.h">
+      <Filter>output\osd</Filter>
+    </ClInclude>
+    <ClInclude Include="output\osd\StatsSnapshot.h">
+      <Filter>output\osd</Filter>
+    </ClInclude>
+    <ClInclude Include="output\video\ControlBarState.h">
+      <Filter>output\video</Filter>
+    </ClInclude>
+    <ClInclude Include="output\video\RenderContext.h">
+      <Filter>output\video</Filter>
+    </ClInclude>
+    <ClInclude Include="output\video\Renderer.h">
+      <Filter>output\video</Filter>
+    </ClInclude>
+    <ClInclude Include="output\video\VideoPresenter.h">
+      <Filter>output\video</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\audio\AudioDecoder.h">
+      <Filter>pipeline\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\audio\AudioResampler.h">
+      <Filter>pipeline\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\audio\AudioSpeedController.h">
+      <Filter>pipeline\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\audio\PCMQueue.h">
+      <Filter>pipeline\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\audio\SpeedController.h">
+      <Filter>pipeline\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\audio\VolumeController.h">
+      <Filter>pipeline\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\demux\Demuxer.h">
+      <Filter>pipeline\demux</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\input\CameraInput.h">
+      <Filter>pipeline\input</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\input\FileInput.h">
+      <Filter>pipeline\input</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\input\InputSource.h">
+      <Filter>pipeline\input</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\input\NetworkInput.h">
+      <Filter>pipeline\input</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\queue\FrameQueue.h">
+      <Filter>pipeline\queue</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\queue\PacketQueue.h">
+      <Filter>pipeline\queue</Filter>
+    </ClInclude>
+    <ClInclude Include="pipeline\video\VideoDecoder.h">
+      <Filter>pipeline\video</Filter>
+    </ClInclude>
+    <ClInclude Include="recording\AudioEncoder.h">
+      <Filter>recording</Filter>
+    </ClInclude>
+    <ClInclude Include="recording\FLVMuxer.h">
+      <Filter>recording</Filter>
+    </ClInclude>
+    <ClInclude Include="recording\HLSMuxer.h">
+      <Filter>recording</Filter>
+    </ClInclude>
+    <ClInclude Include="recording\Muxer.h">
+      <Filter>recording</Filter>
+    </ClInclude>
+    <ClInclude Include="recording\OutputPipeline.h">
+      <Filter>recording</Filter>
+    </ClInclude>
+    <ClInclude Include="recording\RTMPPublisher.h">
+      <Filter>recording</Filter>
+    </ClInclude>
+    <ClInclude Include="recording\VideoEncoder.h">
+      <Filter>recording</Filter>
+    </ClInclude>
+    <ClInclude Include="streaming\BufferController.h">
+      <Filter>streaming</Filter>
+    </ClInclude>
+    <ClInclude Include="streaming\NetworkBuffer.h">
+      <Filter>streaming</Filter>
+    </ClInclude>
+    <ClInclude Include="streaming\NetworkStatistics.h">
+      <Filter>streaming</Filter>
+    </ClInclude>
+    <ClInclude Include="streaming\StreamMonitor.h">
+      <Filter>streaming</Filter>
+    </ClInclude>
+    <ClInclude Include="sync\AudioClock.h">
+      <Filter>sync</Filter>
+    </ClInclude>
+    <ClInclude Include="sync\DropController.h">
+      <Filter>sync</Filter>
+    </ClInclude>
+    <ClInclude Include="sync\FrameScheduler.h">
+      <Filter>sync</Filter>
+    </ClInclude>
+    <ClInclude Include="sync\LiveClock.h">
+      <Filter>sync</Filter>
+    </ClInclude>
+    <ClInclude Include="sync\MasterClock.h">
+      <Filter>sync</Filter>
+    </ClInclude>
+    <ClInclude Include="sync\SyncController.h">
+      <Filter>sync</Filter>
+    </ClInclude>
+    <ClInclude Include="sync\VideoClock.h">
+      <Filter>sync</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
