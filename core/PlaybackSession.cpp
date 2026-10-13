@@ -2946,7 +2946,7 @@ void PlaybackSession::UpdateStatistics()
         owner.streamMonitor->Tick();
     }
 
-    // ---------- v2 Metrics锛氭瘡绉掍竴琛?----------
+    // ---------- v2 Metrics：每秒一行 ----------
     {
         static Uint32 lastMetricsTick = 0;
 
