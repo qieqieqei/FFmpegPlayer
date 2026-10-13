@@ -26,14 +26,14 @@ bool OpenInput(
         av_strerror(ret, errbuf, sizeof(errbuf));
 
         std::cout
-            << "´ò¿ªÊ§°Ü: "
+            << "æ‰“å¼€å¤±è´¥: "
             << errbuf
             << std::endl;
 
         return false;
     }
 
-    std::cout << "´ò¿ª³É¹¦" << std::endl;
+    std::cout << "æ‰“å¼€æˆåŠŸ" << std::endl;
 
     ret = avformat_find_stream_info(
         fmt,
@@ -42,7 +42,7 @@ bool OpenInput(
     if (ret < 0)
     {
         std::cout
-            << "»ñÈ¡Á÷ĞÅÏ¢Ê§°Ü"
+            << "è·å–æµä¿¡æ¯å¤±è´¥"
             << std::endl;
 
         avformat_close_input(&fmt);
@@ -50,9 +50,9 @@ bool OpenInput(
         return false;
     }
 
-    videoIndex = -1;      // ³õÊ¼»¯ÊÓÆµË÷Òı
+    videoIndex = -1;      // åˆå§‹åŒ–è§†é¢‘ç´¢å¼•
 
-    audioIndex = -1;      // ³õÊ¼»¯ÒôÆµË÷Òı
+    audioIndex = -1;      // åˆå§‹åŒ–éŸ³é¢‘ç´¢å¼•
 
 
     for (unsigned int i = 0;
@@ -66,32 +66,32 @@ bool OpenInput(
         if (stream->codecpar->codec_type
             == AVMEDIA_TYPE_VIDEO)
         {
-            videoIndex = i;     // ±£´æÊÓÆµÁ÷±àºÅ
+            videoIndex = i;     // ä¿å­˜è§†é¢‘æµç¼–å·
         }
 
 
         if (stream->codecpar->codec_type
             == AVMEDIA_TYPE_AUDIO)
         {
-            audioIndex = i;     // ±£´æÒôÆµÁ÷±àºÅ
+            audioIndex = i;     // ä¿å­˜éŸ³é¢‘æµç¼–å·
         }
     }
 
     if (videoIndex == -1)
     {
         std::cout
-            << "Ã»ÓĞÕÒµ½ÊÓÆµÁ÷"
+            << "æ²¡æœ‰æ‰¾åˆ°è§†é¢‘æµ"
             << std::endl;
 
         avformat_close_input(&fmt);
 
         return false;
     }
-    //ÊÓÆµÃ»ÓĞ±ØĞëÊ§°Ü¡£ ÒôÆµÃ»ÓĞ£º²¥·ÅÆ÷ÈÔÈ»¿ÉÒÔ²¥·Å¡£
+    //è§†é¢‘æ²¡æœ‰å¿…é¡»å¤±è´¥ã€‚ éŸ³é¢‘æ²¡æœ‰ï¼šæ’­æ”¾å™¨ä»ç„¶å¯ä»¥æ’­æ”¾ã€‚
     if (audioIndex == -1)
     {
         std::cout
-            << "Ã»ÓĞÕÒµ½ÒôÆµÁ÷"
+            << "æ²¡æœ‰æ‰¾åˆ°éŸ³é¢‘æµ"
             << std::endl;
     }
 
@@ -99,32 +99,32 @@ bool OpenInput(
     codecpar = fmt->streams[videoIndex]->codecpar;
 
     std::cout
-        << "ÊÓÆµÁ÷Ë÷Òı: "
+        << "è§†é¢‘æµç´¢å¼•: "
         << videoIndex
         << std::endl;
 
     std::cout
-        << "ÒôÆµÁ÷Ë÷Òı:"
+        << "éŸ³é¢‘æµç´¢å¼•:"
         << audioIndex
         << std::endl;
 
     std::cout
-        << "Á÷ÊıÁ¿: "
+        << "æµæ•°é‡: "
         << fmt->nb_streams
         << std::endl;
 
     std::cout
-        << "Ê±³¤(Ãë): "
+        << "æ—¶é•¿(ç§’): "
         << fmt->duration / AV_TIME_BASE
         << std::endl;
 
     std::cout
-        << "¿í¶È: "
+        << "å®½åº¦: "
         << codecpar->width
         << std::endl;
 
     std::cout
-        << "¸ß¶È: "
+        << "é«˜åº¦: "
         << codecpar->height
         << std::endl;
 
@@ -134,7 +134,7 @@ bool OpenInput(
         << std::endl;
 
     std::cout
-        << "±ÈÌØÂÊ: "
+        << "æ¯”ç‰¹ç‡: "
         << codecpar->bit_rate
         << std::endl;
 

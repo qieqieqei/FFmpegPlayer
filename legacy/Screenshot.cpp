@@ -2,7 +2,7 @@
 
 #include <fstream>
 #include <iostream>
-#include <filesystem>     // C++17 ÎÄ¼ş¼Ğ²Ù×÷
+#include <filesystem>     // C++17 æ–‡ä»¶å¤¹æ“ä½œ
 #include <sstream>
 #include <iomanip>
 
@@ -15,7 +15,7 @@ std::string GetUniqueFilename(
 
 
     std::string result =
-        filename;      // ³õÊ¼ÎÄ¼şÃû
+        filename;      // åˆå§‹æ–‡ä»¶å
 
     int index = 1;
 
@@ -56,11 +56,11 @@ bool SaveScreenshotBMP(
 {
 
     std::filesystem::create_directories(
-        "screenshots");       // ×Ô¶¯´´½¨½ØÍ¼Ä¿Â¼
+        "screenshots");       // è‡ªåŠ¨åˆ›å»ºæˆªå›¾ç›®å½•
 
     if (!rgbData)
     {
-        return false;       // RGBÊı¾İÎª¿Õ
+        return false;       // RGBæ•°æ®ä¸ºç©º
     }
 
     std::string uniqueName =
@@ -68,7 +68,7 @@ bool SaveScreenshotBMP(
             filename);
 
     std::string path =
-        "screenshots/" + filename;      // ±£´æµ½screenshotsÄ¿Â¼
+        "screenshots/" + filename;      // ä¿å­˜åˆ°screenshotsç›®å½•
 
 
     std::ofstream file(
@@ -80,23 +80,23 @@ bool SaveScreenshotBMP(
 
     if (!file)
     {
-        return false;       // ÎÄ¼ş´´½¨Ê§°Ü
+        return false;       // æ–‡ä»¶åˆ›å»ºå¤±è´¥
     }
 
 
 
     int rowSize =
-        (width * 3 + 3) & ~3;      // BMPÃ¿ĞĞ4×Ö½Ú¶ÔÆë
+        (width * 3 + 3) & ~3;      // BMPæ¯è¡Œ4å­—èŠ‚å¯¹é½
 
 
 
     int imageSize =
-        rowSize * height;          // Í¼Æ¬×Ü´óĞ¡
+        rowSize * height;          // å›¾ç‰‡æ€»å¤§å°
 
 
 
     int fileSize =
-        54 + imageSize;            // ÎÄ¼şÍ·54×Ö½Ú
+        54 + imageSize;            // æ–‡ä»¶å¤´54å­—èŠ‚
 
 
 
@@ -104,38 +104,38 @@ bool SaveScreenshotBMP(
 
 
 
-    header[0] = 'B';               // BMP±êÊ¶
+    header[0] = 'B';               // BMPæ ‡è¯†
     header[1] = 'M';
 
 
 
     *(int*)&header[2] =
-        fileSize;                  // ÎÄ¼ş´óĞ¡
+        fileSize;                  // æ–‡ä»¶å¤§å°
 
 
 
     *(int*)&header[10] =
-        54;                        // Êı¾İÆ«ÒÆ
+        54;                        // æ•°æ®åç§»
 
 
 
     *(int*)&header[14] =
-        40;                        // ĞÅÏ¢Í·´óĞ¡
+        40;                        // ä¿¡æ¯å¤´å¤§å°
 
 
 
     *(int*)&header[18] =
-        width;                     // ¿í¶È
+        width;                     // å®½åº¦
 
 
 
     *(int*)&header[22] =
-        -height;                   // ¸ß¶È£¬¸ºÊı±íÊ¾¶¥²¿¿ªÊ¼
+        -height;                   // é«˜åº¦ï¼Œè´Ÿæ•°è¡¨ç¤ºé¡¶éƒ¨å¼€å§‹
 
 
 
     *(short*)&header[26] =
-        1;                         // Æ½ÃæÊı
+        1;                         // å¹³é¢æ•°
 
 
 

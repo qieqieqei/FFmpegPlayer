@@ -6,8 +6,8 @@
 
 
 bool SaveScreenshotBMP(
-    const uint8_t* rgbData,     // RGBÊı¾İÊ×µØÖ·
-    int width,                  // Í¼Æ¬¿í
-    int height,                 // Í¼Æ¬¸ß
-    int linesize,               // Ã¿ĞĞ×Ö½ÚÊı
+    const uint8_t* rgbData,     // RGBæ•°æ®é¦–åœ°å€
+    int width,                  // å›¾ç‰‡å®½
+    int height,                 // å›¾ç‰‡é«˜
+    int linesize,               // æ¯è¡Œå­—èŠ‚æ•°
     const std::string& filename);

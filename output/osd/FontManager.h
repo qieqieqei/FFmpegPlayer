@@ -41,7 +41,7 @@ public:
 
 private:
 
-    TTF_Font* font = nullptr;       // ×ÖÌå¶ÔÏó
+    TTF_Font* font = nullptr;       // å­—ä½“å¯¹è±¡
 
    
   
